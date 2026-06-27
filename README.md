@@ -1,4 +1,5 @@
 # CloudSnap
+
 ![1](tray-icon.png)
 
 Скриншотер и запись экрана с автоматической выгрузкой в Nextcloud через WebDAV для Windows и MacOS.
@@ -13,7 +14,6 @@
 - [Сборка через Docker (кросс-платформенная)](#сборка-через-docker)
 - [Локальная сборка](#локальная-сборка)
 - [Артефакты](#артефакты)
-- [Структура проекта](#структура-проекта)
 - [Очистка](#очистка)
 
 ---
@@ -27,6 +27,7 @@
 **Контейнеризация:** Docker
 
 **Используемые ИИ при разработке:**
+
 - Gemini Flash 3.5 Web (Расширенный) - до лимита
 - Qwen 3.7 Max Agent - 3кк токенов
 - Qwen 3.7 Plus Agent - 3кк токенов
@@ -173,7 +174,6 @@ make build-mac      # только macOS .zip
 ### Windows — .exe на Windows-машине
 
 ```bash
-
 npm install --save-dev @types/node@latest electron-builder@latestnpm && npm run build:win
 # или
 make build-local-win
@@ -216,51 +216,6 @@ make build-local-mac
 | Docker контейнер              | unsigned `.zip` — только для тестирования |
 | Mac-машина локально           | `.dmg` — production-ready                 |
 | GitHub Actions `macos-latest` | `.dmg` — production-ready + code signing  |
-
----
-
-## Структура проекта
-
-```
-├── main.ts                    # Main process (Electron)
-├── preload.ts                 # Preload script (context bridge)
-├── package.json               # Dependencies + electron-builder config
-├── tsconfig.json              # TypeScript config
-├── Makefile                   # CLI-команды сборки
-├── docker-compose.yml         # Docker Compose конфигурация
-├── .dockerignore              # Исключения для Docker контекста
-├── entitlements.mac.plist     # macOS entitlements (hardened runtime)
-├── icon.ico / icon.icns       # Иконки приложения
-├── tray-icon.png / tray-icon-mac.png  # Tray-иконки
-│
-├── build/
-│   └── universal/             # Self-contained Docker-контекст
-│       ├── Dockerfile          # wine + Xvfb + electron-builder
-│       ├── build-all.sh        # Entrypoint: all | win | mac
-│       ├── package.json        # Копия для Docker
-│       ├── src/                # Копия исходников
-│       └── ...                 # Все файлы для сборки
-│
-├── .github/
-│   └── workflows/
-│       └── build.yml           # GitHub Actions CI
-│
-├── src/
-│   ├── display-utils.ts        # Много-мониторная логика
-│   ├── filename-utils.ts       # Шаблоны имен файлов
-│   ├── macos-utils.ts          # macOS-специфичные утилиты
-│   ├── recording-manager.ts    # Управление записью видео
-│   ├── webdav-uploader.ts      # WebDAV + Nextcloud OCS API
-│   └── ui/
-│       ├── main-window/        # Настройки + история
-│       ├── capture-window/     # Захват экрана + разметка
-│       ├── recorder-window/    # Recorder (MediaRecorder)
-│       ├── area-selector/      # Выделение области записи
-│       ├── recording-overlay/  # Индикатор записи + boundary
-│       ├── monitor-picker/     # Выбор монитора
-│       ├── about-window/       # О программе (winver-стиль)
-│       └── docs-window/        # Документация
-```
 
 ---
 
