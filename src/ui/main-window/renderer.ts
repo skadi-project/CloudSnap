@@ -67,6 +67,7 @@ interface Window {
         stopRecording: () => Promise<void>;
         onScreenshotModeChanged: (callback: (mode: string) => void) => void;
         onStatusUpdate: (callback: (message: string) => void) => void;
+        onConnectionStatus: (callback: (data: { status: string; message: string }) => void) => void;
         onRecordingStateChanged: (callback: (data: RecordingStatePayload) => void) => void;
         onRecordingTimerUpdate: (callback: (seconds: number) => void) => void;
         onHistoryUpdated: (callback: () => void) => void;
@@ -287,7 +288,7 @@ async function initForm(): Promise<void> {
 
         if (savedConfig && savedConfig.hasPassword) {
             showAuthenticatedState(savedConfig);
-            if (statusLog) statusLog.innerText = 'Готово к работе.\nCtrl+Shift+A — снимок экрана.';
+            // Connection monitor will set status via onConnectionStatus
             await initAppSettings();
         } else {
             showLoginState();
@@ -402,6 +403,42 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
                 statusLog.style.color = '';
             }
         }
+    });
+}
+
+// === Connection status monitor ===
+let isDisconnected = false;
+const connectionStatus = document.getElementById('connectionStatus') as HTMLElement | null;
+
+if (window.electronAPI && window.electronAPI.onConnectionStatus) {
+    window.electronAPI.onConnectionStatus((data: { status: string; message: string }) => {
+        if (!statusLog) return;
+        if (data.status === 'disconnected') {
+            isDisconnected = true;
+            statusLog.innerText = data.message;
+            statusLog.style.color = '#f44336';
+            if (connectionStatus) { connectionStatus.innerText = 'Соединение потеряно'; connectionStatus.style.color = '#f44336'; }
+        } else if (data.status === 'reconnecting') {
+            statusLog.innerText = data.message;
+            statusLog.style.color = '#ff9800';
+            if (connectionStatus) { connectionStatus.innerText = data.message; connectionStatus.style.color = '#ff9800'; }
+        } else if (data.status === 'connected') {
+            if (isDisconnected) {
+                isDisconnected = false;
+                statusLog.innerText = data.message;
+                statusLog.style.color = '#4caf50';
+                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.style.color = '#4caf50'; }
+            } else {
+                statusLog.innerText = data.message;
+                statusLog.style.color = '#4caf50';
+                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.style.color = '#4caf50'; }
+            }
+        } else if (data.status === 'checking') {
+            statusLog.innerText = data.message;
+            statusLog.style.color = '#aaa';
+            if (connectionStatus) { connectionStatus.innerText = 'Проверка соединения...'; connectionStatus.style.color = '#aaa'; }
+        }
+        if (statusContainer) statusContainer.style.display = 'block';
     });
 }
 

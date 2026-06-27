@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStatusUpdate: (callback: (value: string) => void) =>
         ipcRenderer.on('status-update', (_event: IpcRendererEvent, value: string) => callback(value)),
 
+    onConnectionStatus: (callback: (data: { status: string; message: string }) => void) =>
+        ipcRenderer.on('connection-status', (_event: IpcRendererEvent, data: { status: string; message: string }) => callback(data)),
+
     saveScreenshotMode: (mode: string) => ipcRenderer.send('save-screenshot-mode', mode),
     getScreenshotMode: () => ipcRenderer.invoke('get-screenshot-mode'),
     setScreenshotMode: (mode: string) => ipcRenderer.invoke('set-screenshot-mode', mode),

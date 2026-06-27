@@ -298,6 +298,10 @@
             canvas.style.height = vh + 'px';
             imgScale = vw / canvas.width;   // X-масштаб
             imgScaleY = vh / canvas.height; // Y-масштаб (отличается при taskbar)
+            console.log('[capture] redrawBase: viewport=' + vw + 'x' + vh,
+                'canvas=' + canvas.width + 'x' + canvas.height,
+                'imgScale=' + imgScale, 'imgScaleY=' + imgScaleY,
+                'naturalSize=' + originalImage.naturalWidth + 'x' + originalImage.naturalHeight);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
         }

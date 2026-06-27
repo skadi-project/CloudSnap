@@ -37,12 +37,16 @@ export async function getDisplaySources(): Promise<DisplaySourceInfo[]> {
     const displays = screen.getAllDisplays();
     if (!displays.length) return [];
 
-    const maxWidth = Math.max(...displays.map(d => Math.ceil(d.bounds.width * (d.scaleFactor || 1))));
-    const maxHeight = Math.max(...displays.map(d => Math.ceil(d.bounds.height * (d.scaleFactor || 1))));
+    // desktopCapturer needs a single thumbnailSize for ALL sources.
+    // Use the max physical dimensions so the largest monitor gets a
+    // full-resolution thumbnail. Then resize each thumbnail to its
+    // own monitor's physical size to avoid padding/upscale mismatch.
+    const maxThumbW = Math.max(...displays.map(d => Math.ceil(d.bounds.width * (d.scaleFactor || 1))));
+    const maxThumbH = Math.max(...displays.map(d => Math.ceil(d.bounds.height * (d.scaleFactor || 1))));
 
     const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: maxWidth, height: maxHeight },
+        thumbnailSize: { width: maxThumbW, height: maxThumbH },
         fetchWindowIcons: false
     });
 
@@ -58,6 +62,8 @@ export async function getDisplaySources(): Promise<DisplaySourceInfo[]> {
 
     return displays.map((display, index) => {
         const idStr = String(display.id);
+        const physW = Math.ceil(display.bounds.width * (display.scaleFactor || 1));
+        const physH = Math.ceil(display.bounds.height * (display.scaleFactor || 1));
 
         // Стратегия 1: точное совпадение display_id
         let source = sources.find(s => String((s as any).display_id) === idStr);
@@ -82,6 +88,22 @@ export async function getDisplaySources(): Promise<DisplaySourceInfo[]> {
 
         console.log('[display-utils] display', index, 'id:', display.id, 'matched source:', source ? source.id : 'NONE');
 
+        // Resize thumbnail to this monitor's physical pixel dimensions.
+        // desktopCapturer may return a padded/upscaled thumbnail when
+        // thumbnailSize exceeds the monitor's actual resolution — this
+        // ensures canvas.width matches viewport/scaleFactor correctly.
+        let thumb: NativeImage | null = null;
+        if (source) {
+            const rawThumb = source.thumbnail;
+            const rawSize = rawThumb.getSize();
+            if (rawSize.width !== physW || rawSize.height !== physH) {
+                thumb = rawThumb.resize({ width: physW, height: physH });
+                console.log('[display-utils] resized thumbnail from', rawSize.width + 'x' + rawSize.height, 'to', physW + 'x' + physH);
+            } else {
+                thumb = rawThumb;
+            }
+        }
+
         return {
             id: display.id,
             index,
@@ -90,7 +112,7 @@ export async function getDisplaySources(): Promise<DisplaySourceInfo[]> {
             scaleFactor: display.scaleFactor || 1,
             isPrimary: display.id === primaryId,
             sourceId: source ? source.id : null,
-            thumbnail: source ? source.thumbnail : null
+            thumbnail: thumb
         };
     }).filter((d): d is DisplaySourceInfo & { sourceId: string } => d.sourceId !== null);
 }
@@ -112,61 +134,110 @@ export function findDisplayById(displays: DisplaySourceInfo[], displayId: number
 }
 
 /**
- * Переводит физические/логические координаты окон под конкретный монитор с учётом Scale Factor,
- * выполняя обрезку (клиппинг) границ за пределами выбранного экрана.
+ * Клиппирует координаты окон под конкретный монитор и переводит в thumbnail-пиксели.
+ *
+ * Windows: SetProcessDPIAware() возвращает физические (DPI-unadjusted) координаты,
+ * поэтому bounds нужно перевести в физическое пространство: offset × sf_primary,
+ * dimensions × sf_current. Клиппинг в физическом пространстве, результат —
+ * thumbnail-пиксели без дополнительного перевода.
+ *
+ * macOS/Linux: JXA/AppleScript возвращает логические (point) координаты,
+ * совпадающие с Electron display.bounds. Клиппинг в логическом пространстве,
+ * затем перевод в thumbnail-пиксели через × sf_current.
  */
 export function filterWindowBoundsForDisplay(
-    windowBounds: WindowBounds[], 
-    display: DisplaySourceInfo, 
+    windowBounds: WindowBounds[],
+    display: DisplaySourceInfo,
     thumbnail: NativeImage | null
 ): WindowBounds[] {
     if (!display || !windowBounds || !windowBounds.length) return [];
 
     const { x: dx, y: dy, width, height } = display.bounds;
     const sf = display.scaleFactor || 1;
+    const isWindows = process.platform === 'win32';
 
-    // Вычисляем реальный размер thumbnail (физические пиксели)
     const thumbW = thumbnail ? ((thumbnail as any).width || (thumbnail.getSize && thumbnail.getSize().width) || 0) : 0;
     const thumbH = thumbnail ? ((thumbnail as any).height || (thumbnail.getSize && thumbnail.getSize().height) || 0) : 0;
 
-    console.log('[capture-diag] display.bounds:', JSON.stringify(display.bounds),
+    console.log('[capture-diag] platform:', process.platform,
+        'display.bounds:', JSON.stringify(display.bounds),
         'scaleFactor:', sf,
         'thumbnail:', thumbW + 'x' + thumbH,
         'rawWindowBoundsCount:', windowBounds.length);
-        
+
     if (windowBounds.length) {
         const sample = windowBounds.slice(0, 3);
         console.log('[capture-diag] sample raw windowBounds:', JSON.stringify(sample));
     }
 
-    // Клиппинг идет по физическим границам: max(bounds * scaleFactor, thumbnail).
-    const clipW = Math.max(Math.ceil(width * sf), thumbW);
-    const clipH = Math.max(Math.ceil(height * sf), thumbH);
-    const clipX = dx * sf;
-    const clipY = dy * sf;
+    if (isWindows) {
+        // Windows: window coords are physical (SetProcessDPIAware).
+        // Convert bounds to physical space for clipping.
+        // Position uses sf_primary (desktop coordinate space scale),
+        // dimensions use sf_current (this monitor's physical size).
+        const sfPrimary = screen.getPrimaryDisplay().scaleFactor || 1;
+        const clipX = dx * sfPrimary;
+        const clipY = dy * sfPrimary;
+        const clipW = Math.max(Math.ceil(width * sf), thumbW);
+        const clipH = Math.max(Math.ceil(height * sf), thumbH);
 
-    console.log('[capture-diag] clip region:', clipX, clipY, clipW, clipH);
+        console.log('[capture-diag] sfPrimary:', sfPrimary, 'clip region:', clipX, clipY, clipW, clipH);
 
+        const result = windowBounds
+            .filter(win =>
+                win.x < clipX + clipW &&
+                win.x + win.w > clipX &&
+                win.y < clipY + clipH &&
+                win.y + win.h > clipY
+            )
+            .map(win => {
+                const cx = Math.max(win.x, clipX);
+                const cy = Math.max(win.y, clipY);
+                const cr = Math.min(win.x + win.w, clipX + clipW);
+                const cb = Math.min(win.y + win.h, clipY + clipH);
+                return {
+                    x: cx - clipX,
+                    y: cy - clipY,
+                    w: cr - cx,
+                    h: cb - cy
+                };
+            })
+            .filter(win => win.w > 50 && win.h > 50);
+
+        if (result.length) {
+            console.log('[capture-diag] sample filtered windowBounds:', JSON.stringify(result.slice(0, 3)));
+        }
+        return result;
+    }
+
+    // macOS/Linux: window coords are logical (points), matching Electron bounds.
+    // Clip in logical space, then translate to thumbnail pixels via sf_current.
     const result = windowBounds
         .filter(win =>
-            win.x < clipX + clipW &&
-            win.x + win.w > clipX &&
-            win.y < clipY + clipH &&
-            win.y + win.h > clipY
+            win.x < dx + width &&
+            win.x + win.w > dx &&
+            win.y < dy + height &&
+            win.y + win.h > dy
         )
         .map(win => {
-            const cx = Math.max(win.x, clipX);
-            const cy = Math.max(win.y, clipY);
-            const cr = Math.min(win.x + win.w, clipX + clipW);
-            const cb = Math.min(win.y + win.h, clipY + clipH);
+            const cx = Math.max(win.x, dx);
+            const cy = Math.max(win.y, dy);
+            const cr = Math.min(win.x + win.w, dx + width);
+            const cb = Math.min(win.y + win.h, dy + height);
             return {
-                x: cx - clipX,
-                y: cy - clipY,
+                x: cx - dx,
+                y: cy - dy,
                 w: cr - cx,
                 h: cb - cy
             };
         })
-        .filter(win => win.w > 50 && win.h > 50);
+        .filter(win => win.w > 50 && win.h > 50)
+        .map(win => ({
+            x: Math.round(win.x * sf),
+            y: Math.round(win.y * sf),
+            w: Math.round(win.w * sf),
+            h: Math.round(win.h * sf)
+        }));
 
     if (result.length) {
         console.log('[capture-diag] sample filtered windowBounds:', JSON.stringify(result.slice(0, 3)));
@@ -208,6 +279,7 @@ export function buildPickerPayload(displays: DisplaySourceInfo[]) {
         label: d.label,
         isPrimary: d.isPrimary,
         bounds: d.bounds,
+        scaleFactor: d.scaleFactor,
         thumbnail: d.thumbnail ? d.thumbnail.toDataURL() : null
     }));
 }

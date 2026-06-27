@@ -109,7 +109,7 @@
                     </div>
                     <div class="monitor-info">
                         <div class="monitor-name">${d.label}</div>
-                        <div class="monitor-size">${d.bounds.width} × ${d.bounds.height}</div>
+                        <div class="monitor-size">${Math.round(d.bounds.width * (d.scaleFactor || 1))} × ${Math.round(d.bounds.height * (d.scaleFactor || 1))}</div>
                     </div>
                 `;
                 card.addEventListener('click', () => {

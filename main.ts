@@ -79,6 +79,109 @@ let monitorPickerResolve: ((value: any) => void) | null = null;
 let cachedDisplaySources: any[] = [];
 let captureDisplayId: string | number | null = null;
 
+// === Connection Monitor ===
+const RECONNECT_INTERVALS = [5, 15, 30, 60];
+const HEARTBEAT_INTERVAL = 60;
+let connectionMonitorTimer: NodeJS.Timeout | null = null;
+let connectionState: 'connected' | 'disconnected' | 'checking' = 'connected';
+let reconnectAttemptIndex = 0;
+let reconnectTimer: NodeJS.Timeout | null = null;
+
+function sendConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'checking', message: string) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('connection-status', { status, message });
+    }
+}
+
+async function checkServerConnection(): Promise<boolean> {
+    const url = store.get('url', '') as string;
+    const login = store.get('login', '') as string;
+    const encryptedPassword = store.get('password', '') as string;
+    if (!url || !login || !encryptedPassword) return false;
+    try {
+        const password = safeStorage.decryptString(Buffer.from(encryptedPassword, 'base64'));
+        const result = await testConnection(url, login, password);
+        return result.success;
+    } catch {
+        return false;
+    }
+}
+
+function startHeartbeat() {
+    stopHeartbeat();
+    connectionMonitorTimer = setInterval(async () => {
+        const ok = await checkServerConnection();
+        if (ok) {
+            if (connectionState !== 'connected') {
+                connectionState = 'connected';
+                reconnectAttemptIndex = 0;
+                stopReconnectTimer();
+                sendConnectionStatus('connected', 'Соединение восстановлено');
+            }
+        } else {
+            if (connectionState === 'connected') {
+                connectionState = 'disconnected';
+                reconnectAttemptIndex = 0;
+                sendConnectionStatus('disconnected', 'Соединение потеряно');
+                startReconnect();
+            }
+        }
+    }, HEARTBEAT_INTERVAL * 1000);
+}
+
+function stopHeartbeat() {
+    if (connectionMonitorTimer) {
+        clearInterval(connectionMonitorTimer);
+        connectionMonitorTimer = null;
+    }
+}
+
+function startReconnect() {
+    stopReconnectTimer();
+    if (reconnectAttemptIndex >= RECONNECT_INTERVALS.length) {
+        reconnectAttemptIndex = RECONNECT_INTERVALS.length - 1;
+    }
+    const delay = RECONNECT_INTERVALS[reconnectAttemptIndex];
+    sendConnectionStatus('reconnecting', `Повторное соединение через ${delay} сек...`);
+    reconnectTimer = setTimeout(async () => {
+        const ok = await checkServerConnection();
+        if (ok) {
+            connectionState = 'connected';
+            reconnectAttemptIndex = 0;
+            stopReconnectTimer();
+            sendConnectionStatus('connected', 'Соединение восстановлено');
+        } else {
+            reconnectAttemptIndex++;
+            startReconnect();
+        }
+    }, delay * 1000);
+}
+
+function stopReconnectTimer() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+}
+
+async function initConnectionMonitor() {
+    const hasPassword = store.has('password');
+    if (!hasPassword) return;
+    connectionState = 'checking';
+    sendConnectionStatus('checking', 'Проверка соединения...');
+    const ok = await checkServerConnection();
+    if (ok) {
+        connectionState = 'connected';
+        reconnectAttemptIndex = 0;
+        sendConnectionStatus('connected', 'Готово к работе.');
+        startHeartbeat();
+    } else {
+        connectionState = 'disconnected';
+        sendConnectionStatus('disconnected', 'Соединение потеряно');
+        startReconnect();
+    }
+}
+
 const recordingManager = new RecordingManager((state: string) => {
     if ((app as any).isQuitting) return;
     rebuildTrayMenu();
@@ -888,6 +991,8 @@ app.whenReady().then(async () => {
 
     processQueue();
 
+    initConnectionMonitor();
+
     app.on('browser-window-focus', () => {
         processQueue();
     });
@@ -907,6 +1012,8 @@ app.on('before-quit', (event) => {
 
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    stopHeartbeat();
+    stopReconnectTimer();
     recordingManager.forceStop();
 });
 
@@ -920,7 +1027,13 @@ ipcMain.handle('save-credentials', async (event, config: any) => {
             store.set('password', encryptedPassword.toString('base64'));
         } else {
             store.delete('password');
+            stopHeartbeat();
+            stopReconnectTimer();
+            connectionState = 'connected';
+            return { success: true };
         }
+        // Password saved — start connection monitor
+        initConnectionMonitor();
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };
