@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>CloudSnap — Документация</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 0;
+        }
+
+        /* Навигация */
+        .nav {
+            background: #1e1e1e;
+            color: #ccc;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-title svg { width: 22px; height: 22px; }
+        .nav-links { display: flex; gap: 8px; }
+        .nav-links a {
+            color: #aaa; text-decoration: none;
+            font-size: 13px; padding: 4px 10px;
+            border-radius: 4px; transition: all 0.15s;
+        }
+        .nav-links a:hover { background: #333; color: #fff; }
+
+        /* Контент */
+        .content {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 24px 32px;
+        }
+
+        h1 { font-size: 28px; margin: 0 0 8px; color: #0078d4; }
+        .version { font-size: 13px; color: #888; margin-bottom: 24px; }
+
+        h2 {
+            font-size: 20px; color: #0078d4;
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #0078d4;
+        }
+        h3 { font-size: 16px; color: #444; margin: 20px 0 8px; }
+
+        p { margin: 8px 0; }
+        ul, ol { margin: 8px 0 8px 20px; }
+        li { margin: 4px 0; }
+
+        /* Блоки */
+        .info-box {
+            background: #e8f4fd;
+            border: 1px solid #b3d7ee;
+            border-left: 4px solid #0078d4;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .warn-box {
+            background: #fff8e1;
+            border: 1px solid #ffe082;
+            border-left: 4px solid #ff9800;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .mac-box {
+            background: #f3e5f5;
+            border: 1px solid #ce93d8;
+            border-left: 4px solid #9c27b0;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+
+        /* Клавиши */
+        kbd {
+            background: #eee;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 12px;
+            font-family: 'Segoe UI', monospace;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+        }
+
+        /* Таблица */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid #ddd;
+            font-size: 14px;
+        }
+        th { background: #0078d4; color: #fff; font-weight: 600; }
+        td { background: #fff; }
+
+        /* Схема */
+        .flow {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 12px 0;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+        .flow-step {
+            background: #0078d4;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .flow-arrow { color: #888; font-size: 18px; }
+
+        /* Закрытие */
+        .close-btn {
+            background: #5c5c5c;
+            color: #fff;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .close-btn:hover { background: #444; }
+    </style>
+</head>
+<body>
+
+<div class="nav">
+    <div class="nav-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        CloudSnap — Документация
+    </div>
+    <div class="nav-links">
+        <a href="#setup">Настройка</a>
+        <a href="#screenshots">Скриншоты</a>
+        <a href="#recording">Запись</a>
+        <a href="#hotkeys">Клавиши</a>
+        <a href="#upload">Выгрузка</a>
+        <a href="#macos">macOS</a>
+        <button class="close-btn" onclick="window.close()">✕ Закрыть</button>
+    </div>
+</div>
+
+<div class="content">
+
+<h1>CloudSnap</h1>
+<div class="version">v1.0.0 — Скриншотер и запись экрана с автоматической выгрузкой в Nextcloud</div>
+
+<p>CloudSnap — приложение для быстрого захвата экрана и записи видео с последующей автоматической отправкой файлов на сервер Nextcloud через WebDAV. Работает из системного трея, поддерживает горячие клавиши, разметку снимков и очередь отправки при отсутствии сети.</p>
+
+<div class="flow">
+    <span class="flow-step">Захват / Запись</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">Разметка (опционально)</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">Выгрузка WebDAV</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">Ссылка в буфере</span>
+</div>
+
+<!-- ===================== НАСТРОЙКА ===================== -->
+
+<h2 id="setup">1. Настройка подключения</h2>
+
+<h3>Подключение к Nextcloud</h3>
+<ol>
+    <li>Откройте окно настроек (двойной клик по иконке в трее или <kbd>Ctrl+Q</kbd> для показа)</li>
+    <li>Введите <strong>адрес сервера WebDAV</strong> — например <code>https://cloud.example.com/remote.php/webdav/</code></li>
+    <li>Введите <strong>логин</strong> и <strong>пароль приложения</strong> (создайте его в настройках Nextcloud → Безопасность → Пароли приложений)</li>
+    <li>Нажмите <strong>«Войти и подключить»</strong> — приложение проверит соединение</li>
+</ol>
+
+<div class="info-box">
+    Пароль приложения — не ваш обычный пароль аккаунта. Создайте его в Nextcloud: Настройки → Персональные → Безопасность → Создать пароль приложения.
+</div>
+
+<h3>Параметры приложения</h3>
+<table>
+    <tr><th>Параметр</th><th>Описание</th><th>По умолчанию</th></tr>
+    <tr><td>Папка в Nextcloud</td><td>Целевая папка для файлов (например <code>/Screenshots</code>)</td><td>— (корень)</td></tr>
+    <tr><td>Структура папок</td><td><code>none</code> — все в одну; <code>date</code> — Год/Месяц/День; <code>user</code> — по логину</td><td>none</td></tr>
+    <tr><td>Тип ссылки</td><td><code>internal</code> — для авторизованных; <code>public</code> — короткая ссылка для всех</td><td>internal</td></tr>
+    <tr><td>Шаблон имени файла</td><td>Переменные: <code>{type}</code> <code>{date}</code> <code>{time}</code> <code>{datetime}</code> <code>{user}</code> <code>{monitor}</code></td><td>CS_{type}_{datetime}</td></tr>
+    <tr><td>Таймер по умолчанию</td><td>Задержка перед снимком (0, 3, 5, 10 сек)</td><td>0</td></tr>
+    <tr><td>Качество видео</td><td>Битрейт: 1.5 / 2.5 / 5 Мбит/с</td><td>2.5 Мбит/с</td></tr>
+    <tr><td>Записывать звук</td><td>Захват системного звука при записи видео</td><td>Да</td></tr>
+    <tr><td>Автозапуск</td><td>Запускать при входе в систему</td><td>Нет</td></tr>
+    <tr><td>Локальная копия</td><td>Сохранять файл в <code>Pictures/CloudSnap</code> дополнительно</td><td>Нет</td></tr>
+</table>
+
+<!-- ===================== СКРИНШОТЫ ===================== -->
+
+<h2 id="screenshots">2. Снимки экрана</h2>
+
+<h3>Режимы захвата</h3>
+<table>
+    <tr><th>Режим</th><th>Описание</th><th>Действие</th></tr>
+    <tr><td>Весь экран</td><td>Снимок выбранного монитора целиком</td><td>Клик в любом месте</td></tr>
+    <tr><td>Область</td><td>Прямоугольная область, выделенная мышью</td><td>Зажать ЛКМ → выделить → отпустить</td></tr>
+    <tr><td>Окно</td><td>Снимок видимого окна приложения (наведение + клик)</td><td>Навести на окно → клик</td></tr>
+</table>
+
+<h3>Множество мониторов</h3>
+<p>Если подключено несколько мониторов, при запуске захвата открывается <strong>окно выбора монитора</strong>. Кликните на нужный экран. В процессе разметки можно переключиться на другой монитор кнопками на верхней панели.</p>
+
+<h3>Разметка</h3>
+<p>После захвата экрана открывается панель разметки. Инструменты:</p>
+<table>
+    <tr><th>Инструмент</th><th>Описание</th></tr>
+    <tr><td>Стрелка</td><td>Указание на элемент</td></tr>
+    <tr><td>Прямоугольник</td><td>Выделение области</td></tr>
+    <tr><td>Линия</td><td>Связывание элементов</td></tr>
+    <tr><td>Текст</td><td>Подпись (Enter для ввода)</td></tr>
+    <tr><td>Маркер</td><td>Полупрозрачная подсветка</td></tr>
+    <tr><td>Размытие</td><td>Пикселизация для скрытия данных</td></tr>
+</table>
+<p><kbd>Ctrl+Z</kbd> — отмена, <kbd>Ctrl+Y</kbd> — повтор, <kbd>Enter</kbd> — отправить с разметкой, кнопка «Без разметки» — отправить оригинал.</p>
+
+<!-- ===================== ЗАПИСЬ ===================== -->
+
+<h2 id="recording">3. Запись видео</h2>
+
+<h3>Запуск записи</h3>
+<ul>
+    <li><strong>Записать весь экран</strong> — через трей, меню или горячую клавишу</li>
+    <li><strong>Записать область</strong> — открывается окно выделения, зажмите ЛКМ и выделите прямоугольник</li>
+    <li>При нескольких мониторах — сначала выбор монитора</li>
+</ul>
+
+<h3>Индикатор записи</h3>
+<p>В правом верхнем углу экрана появляется панель с таймером, кнопками <strong>Пауза</strong> и <strong>Стоп</strong>. Для записи области — красная рамка вокруг выделенной зоны.</p>
+
+<h3>Управление</h3>
+<table>
+    <tr><th>Действие</th><th>Способ</th></tr>
+    <tr><td>Пауза</td><td>Кнопка в индикаторе / горячая клавиша записи / меню трея</td></tr>
+    <tr><td>Продолжить</td><td>Кнопка / горячая клавиша записи / меню трея</td></tr>
+    <tr><td>Остановить</td><td>Кнопка «Стоп» / горячая клавиша стопа / меню трея</td></tr>
+</table>
+
+<div class="info-box">
+    Формат видео — <code>.webm</code> (VP9/VP8 + Opus). Битрейт и наличие звука настраиваются в параметрах приложения.
+</div>
+
+<!-- ===================== ГОРЯЧИЕ КЛАВИШИ ===================== -->
+
+<h2 id="hotkeys">4. Горячие клавиши</h2>
+
+<p>Три независимых сочетания настраиваются в параметрах:</p>
+<table>
+    <tr><th>Действие</th><th>По умолчанию (Win)</th><th>По умолчанию (Mac)</th></tr>
+    <tr><td>Снимок экрана</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td></tr>
+    <tr><td>Старт записи / Пауза / Продолжить</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></td></tr>
+    <tr><td>Остановить запись</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td></tr>
+</table>
+
+<div class="warn-box">
+    Горячие клавиши не должны конфликтовать друг с другом. При попытке сохранить совпадающие сочетания приложение покажет предупреждение.
+</div>
+
+<p>Модификаторы: <kbd>Ctrl+Shift</kbd>, <kbd>Ctrl+Alt</kbd>, <kbd>Alt+Shift</kbd>, <kbd>Cmd+Shift</kbd> (Mac). Клавиши: A, S, D, X, Z, F, V, R, W, E, Q, T, Space, Esc.</p>
+
+<!-- ===================== ВЫГРУЗКА ===================== -->
+
+<h2 id="upload">5. Выгрузка и очередь</h2>
+
+<h3>Автоматическая выгрузка</h3>
+<p>После снимка или записи видео файл автоматически отправляется на Nextcloud:</p>
+<ul>
+    <li>Успех — ссылка копируется в буфер обмена, запись добавляется в историю</li>
+    <li>Ошибка сети — файл помещается в <strong>очередь отправки</strong>, приложение повторит попытку при восстановлении сети</li>
+</ul>
+
+<h3>Очередь отправки</h3>
+<p>Файлы из очереди отправляются автоматически при:</p>
+<ul>
+    <li>Получении фокуса любым окном приложения</li>
+    <li>Запуске приложения</li>
+</ul>
+
+<div class="info-box">
+    Очередь хранится в настройках приложения. Файлы лежат в <code>userData/pending-uploads/</code>. Не удаляйте их вручную — они будут отправлены при следующем запуске.
+</div>
+
+<h3>Публичные ссылки</h3>
+<p>Если выбран тип ссылки <code>public</code>, CloudSnap создаёт короткую публичную ссылку через Nextcloud OCS Share API. Ссылка доступна без авторизации.</p>
+
+<h3>История</h3>
+<p>Вкладка «История» показывает последние 50 операций. Для каждого файла:</p>
+<ul>
+    <li>Миниатюра (для снимков) или иконка (для видео)</li>
+    <li>Имя файла, время, статус (загружено / в очереди)</li>
+    <li>Кнопки: скопировать ссылку, открыть в Nextcloud, удалить</li>
+</ul>
+
+<!-- ===================== macOS ===================== -->
+
+<h2 id="macos">6. macOS — особенности</h2>
+
+<h3>Системные разрешения</h3>
+<p>macOS требует два разрешения для CloudSnap:</p>
+
+<table>
+    <tr><th>Разрешение</th><th>Для чего</th><th>Как включить</th></tr>
+    <tr><td>Запись экрана</td><td>Скриншоты и запись видео (desktopCapturer)</td><td>Системные настройки → Конфиденциальность → Запись экрана → добавить CloudSnap</td></tr>
+    <tr><td>Универсальный доступ</td><td>Режим «Окно» (определение границ окон) и запись области</td><td>Системные настройки → Конфиденциальность → Универсальный доступ → добавить CloudSnap</td></tr>
+</table>
+
+<div class="mac-box">
+    При первом запуске CloudSnap проверяет эти разрешения. Если они отсутствуют, приложение покажет уведомление и предложит открыть нужный раздел системных настроек.
+</div>
+
+<h3>Трей-иконка</h3>
+<p>На macOS CloudSnap использует иконку <code>tray-icon-mac.png</code> из ресурсов приложения. Иконка отображается в правой части меню-бара.</p>
+
+<h3>Автозапуск</h3>
+<p>На macOS автозапуск настраивается через <code>Login Items</code>. Если включён параметр «Свернуть в трей», приложение запускается скрыто.</p>
+
+<h3>Горячие клавиши</h3>
+<p>На macOS модификатор <kbd>Cmd</kbd> (<kbd>⌘</kbd>) используется вместо <kbd>Ctrl</kbd>. Рекомендуемое сочетание — <kbd>Cmd</kbd>+<kbd>Shift</kbd>.</p>
+
+<h3>Звук при записи</h3>
+<p>На macOS системный звук захватывается через <code>chromeMediaSource: 'desktop'</code> — это требует разрешения на запись экрана.</p>
+
+<!-- ===================== ТРЕЙ ===================== -->
+
+<h2>7. Контекстное меню трея</h2>
+
+<table>
+    <tr><th>Элемент</th><th>Описание</th></tr>
+    <tr><td>Показать настройки</td><td>Открывает главное окно</td></tr>
+    <tr><td>Записать весь экран</td><td>Начинает запись текущего монитора</td></tr>
+    <tr><td>Записать область</td><td>Открывает окно выделения области</td></tr>
+    <tr><td>Пауза / Продолжить / Остановить</td><td>Управление записью (меняются в процессе)</td></tr>
+    <tr><td>Сделать снимок</td><td>Запускает захват экрана</td></tr>
+    <tr><td>Выйти из приложения</td><td>Завершает работу (если запись активна — сначала останавливает)</td></tr>
+</table>
+
+<!-- ===================== ТИПЫ ФАЙЛОВ ===================== -->
+
+<h2>8. Типы файлов и имена</h2>
+
+<p>Шаблон имени файла настраивается. Переменные:</p>
+<table>
+    <tr><th>Переменная</th><th>Пример значения</th></tr>
+    <tr><td><code>{type}</code></td><td>image или video</td></tr>
+    <tr><td><code>{date}</code></td><td>2026-06-27</td></tr>
+    <tr><td><code>{time}</code></td><td>14-30-05</td></tr>
+    <tr><td><code>{datetime}</code></td><td>2026-06-27T14-30-05</td></tr>
+    <tr><td><code>{user}</code></td><td>admin</td></tr>
+    <tr><td><code>{monitor}</code></td><td>1</td></tr>
+</table>
+<p>Расширение: <code>.png</code> для снимков, <code>.webm</code> для видео.</p>
+
+<div class="info-box">
+    Кириллические символы и спецзнаки в именах автоматически заменяются на безопасные.
+</div>
+
+</div>
+</body>
+</html>

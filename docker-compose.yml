@@ -1,0 +1,13 @@
+# CloudSnap — единый сборочный контейнер
+#
+# docker compose run --rm -v ./dist/output:/output cloudsnap        # обе платформы
+# docker compose run --rm -v ./dist/output:/output cloudsnap win     # только .exe
+# docker compose run --rm -v ./dist/output:/output cloudsnap mac     # только .zip
+
+services:
+  cloudsnap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./dist/output:/output

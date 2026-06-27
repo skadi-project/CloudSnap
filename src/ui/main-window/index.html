@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>CloudSnap</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 0; margin: 0; background: #f5f5f5; color: #333; overflow-y: auto; }
+        .icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; margin-right: 5px; }
+        .icon-lg { width: 26px; height: 26px; }
+        select.hotkey-conflict { border-color: #f44336 !important; background: #fff5f5; }
+
+        /* Вкладки */
+        .tab-bar {
+            display: none; background: #fff; border-bottom: 1px solid #e1dfdd;
+            padding: 8px 20px 0; gap: 0;
+        }
+        .tab-btn {
+            padding: 8px 20px; border: none; background: transparent;
+            cursor: pointer; font-size: 14px; font-family: Arial, sans-serif;
+            color: #666; border-bottom: 3px solid transparent; transition: all 0.15s;
+            border-radius: 6px 6px 0 0; margin-right: 2px;
+        }
+        .tab-btn:hover { background: #f0f0f0; color: #333; }
+        .tab-btn.active { color: #0078d4; border-bottom-color: #0078d4; background: #f5f5f5; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Общие стили */
+        .app-body { padding: 20px 24px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .checkbox-group { margin-bottom: 15px; display: flex; align-items: center; }
+        .checkbox-group input { margin-right: 10px; cursor: pointer; }
+        .checkbox-group label { margin-bottom: 0; font-weight: normal; cursor: pointer; }
+
+        button { background: #0078d4; color: white; border: none; padding: 10px 15px; cursor: pointer; width: 100%; border-radius: 4px; font-size: 14px; }
+        button:hover { background: #005a9e; }
+
+        .logout-btn { background: #a80000; margin-top: 10px; }
+        .logout-btn:hover { background: #8a0000; }
+
+        .status-container { display: none; margin-top: 20px; padding: 16px; background: #fafafa; border: 1px solid #e1dfdd; border-radius: 6px; }
+        .status-container h3 { margin-bottom: 8px; font-size: 14px; }
+        .status { padding: 12px 16px; background: #ffffff; border: 1px solid #dddddd; border-left: 4px solid #0078d4; font-size: 13px; box-sizing: border-box; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+
+        .hidden { display: none !important; }
+        .profile-box { background: #fff; padding: 15px; border: 1px solid #e1dfdd; border-radius: 4px; margin-bottom: 15px; }
+
+        /* История */
+        .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .history-header h3 { margin: 0; }
+        .clear-history-btn { background: #a80000; padding: 6px 12px; font-size: 12px; width: auto; }
+        .clear-history-btn:hover { background: #8a0000; }
+
+        .history-list { display: flex; flex-direction: column; gap: 8px; }
+        .history-empty { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
+
+        .history-card {
+            display: flex; gap: 12px; background: #fff; border: 1px solid #e1dfdd;
+            border-radius: 6px; padding: 10px; transition: background 0.1s;
+        }
+        .history-card:hover { background: #fafafa; }
+        .history-thumb {
+            width: 100px; height: 70px; object-fit: cover; border-radius: 4px;
+            background: #eee; flex-shrink: 0;
+        }
+        .history-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .history-filename { font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .history-time { font-size: 11px; color: #999; }
+
+        .history-status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .status-dot.uploaded { background: #4caf50; }
+        .status-dot.queued { background: #ff9800; }
+        .status-dot.error { background: #f44336; }
+
+        /* Индикатор записи */
+        .recording-bar {
+            display: none; background: #ff3333; color: #fff;
+            padding: 8px 16px; font-size: 13px; text-align: center;
+            border-radius: 4px; margin-bottom: 15px;
+            font-family: Arial, sans-serif;
+        }
+        .recording-bar.active { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .recording-bar.paused { background: #ffcc00; color: #333; }
+        .rec-bar-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: recPulse 1s ease-in-out infinite; }
+        .recording-bar.paused .rec-bar-dot { background: #333; animation: none; }
+        @keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* Кнопки записи */
+        .record-btns { display: flex; gap: 8px; margin-bottom: 12px; }
+        .record-btn {
+            padding: 10px; border-radius: 6px; font-size: 13px;
+            border: none; color: #fff; cursor: pointer;
+            flex: 1; text-align: center;
+        }
+        .record-btn.fullscreen { background: #0078d4; }
+        .record-btn.fullscreen:hover { background: #005a9e; }
+        .record-btn.area { background: #5c5c5c; }
+        .record-btn.area:hover { background: #444; }
+        .record-btn.stop-rec { background: #c00; }
+        .record-btn.stop-rec:hover { background: #a00; }
+
+        .history-actions { display: flex; gap: 6px; margin-top: 4px; }
+        .history-actions button {
+            width: auto; padding: 4px 10px; font-size: 11px; border-radius: 4px;
+        }
+        .action-copy { background: #0078d4; }
+        .action-copy:hover { background: #005a9e; }
+        .action-nc { background: #28a745; }
+        .action-nc:hover { background: #1e7e34; }
+        .action-delete { background: transparent; color: #999; border: 1px solid #ccc; }
+        .action-delete:hover { background: #f44336; color: #fff; border-color: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="tab-bar" id="tabBar">
+        <button class="tab-btn active" data-tab="settings"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2.5" fill="currentColor" stroke="none"/><circle cx="7" cy="18" r="2.5" fill="currentColor" stroke="none"/></svg>Настройки</button>
+        <button class="tab-btn" data-tab="history"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 12h18M3 19h18"/></svg>История</button>
+    </div>
+
+    <div class="tab-content active" id="settingsTab">
+        <div class="app-body">
+            <h2>Интеграция Nextcloud</h2>
+
+            <div id="authForm">
+                <div class="form-group">
+                    <label>Адрес сервера WebDAV</label>
+                    <input type="text" id="url" placeholder="http://localhost:8080/remote.php/webdav/">
+                </div>
+                <div class="form-group">
+                    <label>Логин</label>
+                    <input type="text" id="login">
+                </div>
+                <div class="form-group">
+                    <label>Пароль приложения</label>
+                    <input type="password" id="password">
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="rememberMe" checked>
+                    <label for="rememberMe">Запомнить учетные данные на этом компьютере</label>
+                </div>
+                <button id="saveBtn">Войти и подключить</button>
+            </div>
+            <div id="profileView" class="hidden">
+                <div class="profile-box">
+                    <p><strong>Статус:</strong> Подключено к облаку</p>
+                    <p><strong>Аккаунт:</strong> <span id="activeUser">admin</span></p>
+                    <p><strong>Сервер:</strong> <span id="activeServer">localhost</span></p>
+                </div>
+
+                <!-- Индикатор записи -->
+                <div class="recording-bar" id="recordingBar">
+                    <div class="rec-bar-dot"></div>
+                    <span id="recordingStatusText">Запись...</span>
+                    <span id="recordingTimerText">00:00</span>
+                </div>
+
+                <!-- Кнопки записи -->
+                <div class="record-btns" id="recordBtns">
+                    <button class="record-btn fullscreen" id="recordFullscreenBtn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><circle cx="12" cy="10" r="3" fill="#e00" stroke="none"/></svg>Записать экран</button>
+                    <button class="record-btn area" id="recordAreaBtn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3" fill="#e00" stroke="none"/></svg>Записать область</button>
+                </div>
+                <div class="record-btns hidden" id="recordStopBtns">
+                    <button class="record-btn stop-rec" id="recordStopBtn"><svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Остановить запись</button>
+                </div>
+
+                <div class="profile-box">
+                    <label style="margin-bottom: 10px;"><strong>Режим скриншота:</strong></label>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-weight: normal; cursor: pointer;">
+                            <input type="radio" name="screenshotMode" value="screen" checked> Весь экран
+                        </label>
+                        <label style="font-weight: normal; cursor: pointer;">
+                            <input type="radio" name="screenshotMode" value="area"> Выбранная область
+                        </label>
+                        <label style="font-weight: normal; cursor: pointer;">
+                            <input type="radio" name="screenshotMode" value="window"> Окно приложения
+                        </label>
+                    </div>
+                </div>
+
+                <div class="profile-box" style="margin-top: 15px;">
+                    <label style="margin-bottom: 10px;"><strong>Параметры приложения:</strong></label>
+
+                    <div class="form-group">
+                        <label for="remoteFolder" style="font-weight: normal; font-size: 13px;">Папка в Nextcloud:</label>
+                        <input type="text" id="remoteFolder" placeholder="/Screenshots" style="padding: 6px; font-size: 13px;">
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="folderStructure" style="font-weight: normal; font-size: 13px;">Структура папок:</label>
+                        <select id="folderStructure" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                            <option value="none">Все файлы в одну папку</option>
+                            <option value="date">Год/Месяц/День — отдельно на каждый день</option>
+                            <option value="user">По имени пользователя — отдельно для каждого аккаунта</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="linkMode" style="font-weight: normal; font-size: 13px;">Тип ссылки:</label>
+                        <select id="linkMode" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                            <option value="internal">Внутренняя — только для авторизованных</option>
+                            <option value="public">Публичная — короткая ссылка для всех</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="filenameTemplate" style="font-weight: normal; font-size: 13px;">Шаблон имени файла:</label>
+                        <input type="text" id="filenameTemplate" placeholder="CS_{type}_{datetime}" style="width: 100%; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                        <div style="font-size: 11px; color: #888; margin-top: 4px;">
+                            Переменные: {type}, {date}, {time}, {datetime}, {user}, {monitor}
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="defaultDelay" style="font-weight: normal; font-size: 13px;">Таймер по умолчанию:</label>
+                        <select id="defaultDelay" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                            <option value="0">Без задержки (мгновенно)</option>
+                            <option value="3">3 секунды</option>
+                            <option value="5">5 секунд</option>
+                            <option value="10">10 секунд</option>
+                        </select>
+                    </div>
+
+                    <div class="checkbox-group" style="margin-top: 10px; margin-bottom: 10px;">
+                        <input type="checkbox" id="autoStart">
+                        <label for="autoStart" style="font-size: 13px;">Запускать при старте системы</label>
+                    </div>
+
+                    <div class="checkbox-group hidden" id="startMinimizedGroup" style="margin-top: 5px; margin-bottom: 10px; padding-left: 26px;">
+                        <input type="checkbox" id="startMinimized">
+                        <label for="startMinimized" style="font-size: 13px;">Свернуть в трей</label>
+                    </div>
+
+                    <div class="checkbox-group" style="margin-top: 10px; margin-bottom: 10px;">
+                        <input type="checkbox" id="saveLocalCopy">
+                        <label for="saveLocalCopy" style="font-size: 13px;">Сохранять локальную копию снимка</label>
+                    </div>
+
+                    <button id="openScreenshotsBtn" class="hidden" style="padding: 8px; font-size: 13px; background: #6c757d; margin-top: 5px; margin-bottom: 10px;"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7v12a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>Открыть снимки</button>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="videoBitrate" style="font-weight: normal; font-size: 13px;">Качество видео:</label>
+                        <select id="videoBitrate" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px;">
+                            <option value="1500000">Низкое (1.5 Мбит/с) — маленький файл</option>
+                            <option value="2500000" selected>Среднее (2.5 Мбит/с) — баланс</option>
+                            <option value="5000000">Высокое (5 Мбит/с) — детальное</option>
+                        </select>
+                    </div>
+
+                    <div class="checkbox-group" style="margin-top: 10px; margin-bottom: 10px;">
+                        <input type="checkbox" id="recordAudio" checked>
+                        <label for="recordAudio" style="font-size: 13px;">Записывать системный звук</label>
+                    </div>
+                </div>
+
+                <div class="profile-box" style="margin-top: 15px;">
+                    <label style="margin-bottom: 10px;"><strong>Горячие клавиши скриншота:</strong></label>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <div style="display: flex; gap: 5px;">
+                            <select id="hotkeyModifier" style="flex: 2; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="Control+Shift">Ctrl + Shift +</option>
+                                <option value="Control+Alt">Ctrl + Alt +</option>
+                                <option value="Alt+Shift">Alt + Shift +</option>
+                                <option value="Command+Shift">Cmd + Shift + (Mac)</option>
+                            </select>
+                            <select id="hotkeyKey" style="flex: 1; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="A">A</option>
+                                <option value="S">S</option>
+                                <option value="D">D</option>
+                                <option value="X">X</option>
+                                <option value="Z">Z</option>
+                                <option value="F">F</option>
+                                <option value="Space">Space</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-box" style="margin-top: 15px;">
+                    <label style="margin-bottom: 10px;"><strong>Горячие клавиши записи видео:</strong></label>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="recordHotkeyModifier" style="font-weight: normal; font-size: 13px;">Старт / Пауза / Продолжить:</label>
+                        <div style="display: flex; gap: 5px;">
+                            <select id="recordHotkeyModifier" style="flex: 2; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="Control+Shift">Ctrl + Shift +</option>
+                                <option value="Control+Alt">Ctrl + Alt +</option>
+                                <option value="Alt+Shift">Alt + Shift +</option>
+                                <option value="Command+Shift">Cmd + Shift + (Mac)</option>
+                            </select>
+                            <select id="recordHotkeyKey" style="flex: 1; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="V">V</option>
+                                <option value="R">R</option>
+                                <option value="W">W</option>
+                                <option value="E">E</option>
+                                <option value="Q">Q</option>
+                                <option value="T">T</option>
+                                <option value="Space">Space</option>
+                            </select>
+                        </div>
+                        <div style="font-size: 11px; color: #888; margin-top: 4px;">Запуск записи, пауза и продолжение по одной клавише</div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="stopHotkeyModifier" style="font-weight: normal; font-size: 13px;">Остановить запись:</label>
+                        <div style="display: flex; gap: 5px;">
+                            <select id="stopHotkeyModifier" style="flex: 2; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="Control+Shift">Ctrl + Shift +</option>
+                                <option value="Control+Alt">Ctrl + Alt +</option>
+                                <option value="Alt+Shift">Alt + Shift +</option>
+                                <option value="Command+Shift">Cmd + Shift + (Mac)</option>
+                            </select>
+                            <select id="stopHotkeyKey" style="flex: 1; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="S">S</option>
+                                <option value="X">X</option>
+                                <option value="D">D</option>
+                                <option value="Q">Q</option>
+                                <option value="W">W</option>
+                                <option value="Escape">Esc</option>
+                                <option value="Space">Space</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                    <button id="saveSettingsBtn" style="padding: 8px; font-size: 13px; background: #28a745;">Сохранить параметры</button>
+                </div>
+            </div>
+
+            <div id="statusContainer" class="status-container">
+                <h3>Журнал событий</h3>
+                <div class="status" id="statusLog">Готов к работе. Нажмите Ctrl+Shift+A для скриншота.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="historyTab">
+        <div class="app-body">
+            <div class="history-header">
+                <h3>История снимков</h3>
+                <button class="clear-history-btn" id="clearHistoryBtn">Очистить</button>
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="history-empty" id="historyEmpty">Снимков пока нет. Используйте Ctrl+Shift+A для захвата.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>var exports = {};</script>
+    <script src="renderer.js"></script>
+</body>
+</html>

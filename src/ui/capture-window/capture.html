@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background: transparent; cursor: crosshair; user-select: none;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+
+        /* Верхняя панель инструментов (как в Snipping Tool) */
+        #toolbar {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 4px; background: rgba(30, 30, 30, 0.95);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            padding: 6px 10px; z-index: 10000; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            align-items: center;
+        }
+        .toolBtn {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-width: 70px; height: 50px; border: 2px solid transparent; border-radius: 6px;
+            background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;
+            font-size: 11px; transition: all 0.15s ease; pointer-events: auto;
+            padding: 4px 8px;
+        }
+        .toolBtn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+        .toolBtn.active { border-color: #0078d4; background: rgba(0,120,212,0.25); color: #fff; }
+        .toolBtn svg { width: 20px; height: 20px; margin-bottom: 3px; }
+        
+        .separator { width: 1px; height: 36px; background: rgba(255,255,255,0.15); margin: 0 6px; }
+        
+        .actionBtn {
+            padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+            font-size: 12px; color: #fff; transition: all 0.15s;
+        }
+        .actionBtn.cancel { background: rgba(255,255,255,0.1); }
+        .actionBtn.cancel:hover { background: rgba(255,255,255,0.2); }
+
+        /* Панель выбора монитора */
+        #monitorBar {
+            position: absolute; top: 12px; right: 12px;
+            display: none; gap: 4px; background: rgba(30, 30, 30, 0.95);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            padding: 6px 8px; z-index: 10001; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            align-items: center;
+        }
+        #monitorBar.visible { display: flex; }
+        .monitorBtn {
+            padding: 6px 12px; border: 2px solid transparent; border-radius: 6px;
+            background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;
+            font-size: 11px; transition: all 0.15s ease;
+        }
+        .monitorBtn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+        .monitorBtn.active { border-color: #0078d4; background: rgba(0,120,212,0.25); color: #fff; }
+
+        /* Подсказка внизу */
+        #hint {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            color: white; background: rgba(30, 30, 30, 0.95);
+            padding: 10px 20px; font-size: 13px;
+            border-radius: 6px; z-index: 9999; box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+            pointer-events: none; white-space: nowrap;
+        }
+
+        /* Панель разметки (после захвата) */
+        #annotateToolbar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: none; gap: 4px; background: rgba(30, 30, 30, 0.95);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            padding: 8px 12px; z-index: 10000; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            align-items: center; max-width: 98vw; overflow-x: auto;
+        }
+        #annotateToolbar.visible { display: flex; }
+        
+        .annotateBtn {
+            width: 36px; height: 36px; border: 2px solid transparent; border-radius: 6px;
+            background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s ease;
+        }
+        .annotateBtn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .annotateBtn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+        .annotateBtn.active { border-color: #0078d4; background: rgba(0,120,212,0.25); color: #fff; }
+
+        .annotateAction {
+            padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer;
+            font-size: 12px; color: #fff; transition: all 0.15s;
+        }
+        .annotateAction.undo { background: rgba(255,255,255,0.15); }
+        .annotateAction.undo:hover { background: rgba(255,255,255,0.25); }
+        .annotateAction.send { background: #28a745; }
+        .annotateAction.send:hover { background: #1e7e34; }
+        .annotateAction.skip { background: #5c5c5c; }
+        .annotateAction.skip:hover { background: #444; }
+
+        /* Текстовый ввод */
+        #textInput {
+            position: absolute; display: none; z-index: 10001;
+            background: rgba(30, 30, 30, 0.95); border: 2px solid #0078d4;
+            color: #fff; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 6px 10px; border-radius: 4px; outline: none;
+            min-width: 140px; pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Верхняя панель инструментов -->
+    <div id="toolbar">
+        <button class="toolBtn active" data-mode="fullscreen" title="Полный экран (1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span>Экран</span>
+        </button>
+        <button class="toolBtn" data-mode="rect" title="Прямоугольник (2)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/>
+                <path d="M7 3v4M3 7h4M17 21v-4M21 17h-4"/>
+            </svg>
+            <span>Область</span>
+        </button>
+        <button class="toolBtn" data-mode="window" title="Окно (3)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <line x1="2" y1="9" x2="22" y2="9"/>
+                <circle cx="5.5" cy="6.5" r="1" fill="currentColor"/>
+                <circle cx="8.5" cy="6.5" r="1" fill="currentColor"/>
+            </svg>
+            <span>Окно</span>
+        </button>
+        <div class="separator"></div>
+        <button class="actionBtn cancel" id="cancelBtn">Отмена (Esc)</button>
+    </div>
+
+    <!-- Панель выбора монитора -->
+    <div id="monitorBar"></div>
+
+    <!-- Подсказка -->
+    <div id="hint">Выберите режим и кликните для снимка</div>
+
+    <!-- Панель разметки (после захвата) -->
+    <div id="annotateToolbar">
+        <button class="annotateBtn" data-tool="arrow" title="Стрелка">
+            <svg viewBox="0 0 24 24"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="12 5 19 5 19 12"/></svg>
+        </button>
+        <button class="annotateBtn" data-tool="rect" title="Прямоугольник">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>
+        </button>
+        <button class="annotateBtn" data-tool="line" title="Линия">
+            <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="4"/></svg>
+        </button>
+        <button class="annotateBtn" data-tool="text" title="Текст">
+            <svg viewBox="0 0 24 24"><polyline points="4 7 12 7 20 7"/><line x1="12" y1="7" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+        </button>
+        <button class="annotateBtn" data-tool="marker" title="Маркер">
+            <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="7" rx="1" fill="currentColor" stroke="none" opacity="0.6"/><rect x="3" y="10" width="18" height="7" rx="1"/></svg>
+        </button>
+        <button class="annotateBtn" data-tool="blur" title="Размытие">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+        <div class="separator"></div>
+        <button class="annotateAction undo" id="undoBtn">↶ Отмена</button>
+        <button class="annotateAction undo" id="redoBtn">↷ Повтор</button>
+        <div class="separator"></div>
+        <button class="annotateAction skip" id="skipBtn">Без разметки</button>
+        <button class="annotateAction send" id="sendBtn">✓ Готово</button>
+    </div>
+
+    <input id="textInput" type="text" placeholder="Введите текст...">
+    <canvas id="screenCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('screenCanvas');
+        const ctx = canvas.getContext('2d');
+        const toolbar = document.getElementById('toolbar');
+        const hint = document.getElementById('hint');
+        const monitorBar = document.getElementById('monitorBar');
+        const annotateToolbar = document.getElementById('annotateToolbar');
+        const textInput = document.getElementById('textInput');
+        
+        const toolButtons = document.querySelectorAll('.toolBtn');
+        const annotateButtons = document.querySelectorAll('.annotateBtn');
+        
+        const cancelBtn = document.getElementById('cancelBtn');
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const skipBtn = document.getElementById('skipBtn');
+
+        let originalImage = new Image();
+        let currentMode = 'fullscreen';
+        let windowBounds = [];
+        let hoveredWindow = null;
+        let imgScale = 1;  // X: viewport / canvas
+        let imgScaleY = 1; // Y: viewport / canvas (отдельно, т.к. taskbar уменьшает viewport.height)
+
+        // Захват области
+        let isDrawing = false;
+        let startX = 0, startY = 0, endX = 0, endY = 0;
+
+        // Разметка
+        let annotateMode = false;
+        let currentTool = null;
+        let actions = [];
+        let redoStack = [];
+        let capturedRect = null;
+        let capturedCanvas = null;
+        let isTextInputVisible = false;
+        let textInputCanvasPos = null; // canvas-координаты для текстового ввода
+        let currentDisplayId = null;
+        let currentDisplayIndex = 0;
+        let availableDisplays = [];
+
+        // Рисование инструмента
+        let toolStartX = 0, toolStartY = 0, toolEndX = 0, toolEndY = 0;
+        let isToolDrawing = false;
+
+        const COLORS = {
+            arrow: '#ff3333',
+            rect: '#ff3333',
+            line: '#ff3333',
+            text: '#ff3333',
+            marker: 'rgba(255, 220, 0, 0.5)',
+            markerBorder: '#ffcc00',
+            blur: 'pixelate'
+        };
+
+        // === РЕЖИМЫ ЗАХВАТА ===
+
+        toolButtons.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                setMode(btn.dataset.mode);
+            });
+        });
+
+        async function setMode(mode) {
+            currentMode = mode;
+            await window.electronAPI.setScreenshotMode(mode);
+            toolButtons.forEach(b => b.classList.remove('active'));
+            document.querySelector(`.toolBtn[data-mode="${mode}"]`).classList.add('active');
+            isDrawing = false;
+            hoveredWindow = null;
+            if (originalImage.src) redrawBase();
+            updateHint();
+        }
+
+        function updateHint() {
+            if (annotateMode) {
+                hint.textContent = 'Разметка: выберите инструмент и рисуйте. Enter — отправить.';
+                return;
+            }
+            if (currentMode === 'fullscreen') hint.textContent = 'Кликните в любом месте для снимка всего экрана';
+            else if (currentMode === 'rect') hint.textContent = 'Зажмите ЛКМ и выделите область';
+            else if (currentMode === 'window') hint.textContent = 'Наведите на окно и кликните для снимка';
+        }
+
+        cancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (annotateMode) exitAnnotate();
+            else window.close();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (annotateMode) exitAnnotate();
+                else window.close();
+            }
+            if (!annotateMode) {
+                if (e.key === '1') setMode('fullscreen');
+                if (e.key === '2') setMode('rect');
+                if (e.key === '3') setMode('window');
+            }
+            if (annotateMode) {
+                if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+                if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+                if (e.key === 'Enter' && !isTextInputVisible) sendAnnotated();
+            }
+        });
+
+        function getMousePos(e) {
+            return { x: e.clientX / imgScale, y: e.clientY / imgScaleY };
+        }
+
+        function redrawBase() {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            canvas.width = originalImage.naturalWidth || vw;
+            canvas.height = originalImage.naturalHeight || vh;
+            canvas.style.width = vw + 'px';
+            canvas.style.height = vh + 'px';
+            imgScale = vw / canvas.width;   // X-масштаб
+            imgScaleY = vh / canvas.height; // Y-масштаб (отличается при taskbar)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+        }
+
+        function applyCapturePayload(data) {
+            currentMode = data.mode;
+            currentDisplayId = data.currentDisplayId;
+            availableDisplays = data.displays || [];
+            const activeDisplay = availableDisplays.find(d => d.id === currentDisplayId);
+            currentDisplayIndex = activeDisplay ? activeDisplay.index : 0;
+
+            toolButtons.forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.toolBtn[data-mode="${currentMode}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            renderMonitorBar();
+
+            originalImage.onload = () => {
+                redrawBase();
+                windowBounds = data.windowBounds || [];
+                console.log('[capture] Window bounds loaded:', windowBounds.length, 'windows');
+                if (windowBounds.length > 0) {
+                    console.log('[capture] Sample bounds:', windowBounds.slice(0, 3));
+                }
+                updateHint();
+            };
+            originalImage.src = data.imageSrc;
+        }
+
+        function renderMonitorBar() {
+            monitorBar.innerHTML = '';
+            if (!availableDisplays || availableDisplays.length <= 1) {
+                monitorBar.classList.remove('visible');
+                return;
+            }
+            monitorBar.classList.add('visible');
+            for (const d of availableDisplays) {
+                const btn = document.createElement('button');
+                btn.className = 'monitorBtn' + (d.id === currentDisplayId ? ' active' : '');
+                btn.textContent = d.label || `Монитор ${d.index + 1}`;
+                btn.title = d.label || '';
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (d.id === currentDisplayId || annotateMode) return;
+                    hint.textContent = 'Переключение монитора...';
+                    await window.electronAPI.switchCaptureDisplay(d.id);
+                });
+                monitorBar.appendChild(btn);
+            }
+        }
+
+        window.electronAPI.onScreenshotCaptured((data) => applyCapturePayload(data));
+
+        if (window.electronAPI.onCaptureDisplaySwitched) {
+            window.electronAPI.onCaptureDisplaySwitched((data) => {
+                annotateMode = false;
+                annotateToolbar.classList.remove('visible');
+                toolbar.style.opacity = '1';
+                toolbar.style.pointerEvents = 'auto';
+                isDrawing = false;
+                hoveredWindow = null;
+                applyCapturePayload(data);
+            });
+        }
+
+        // === MOUSEMOVE ===
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (annotateMode) return handleToolMove(e);
+            const pos = getMousePos(e);
+
+            if (currentMode === 'window') {
+                const match = windowBounds.find(win =>
+                    pos.x >= win.x && pos.x <= (win.x + win.w) &&
+                    pos.y >= win.y && pos.y <= (win.y + win.h)
+                );
+                if (match !== hoveredWindow) {
+                    hoveredWindow = match;
+                    redrawBase();
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    if (hoveredWindow) {
+                        const toPhysX = originalImage.naturalWidth / canvas.width;
+                        const toPhysY = originalImage.naturalHeight / canvas.height;
+                        ctx.drawImage(originalImage,
+                            hoveredWindow.x * toPhysX, hoveredWindow.y * toPhysY,
+                            hoveredWindow.w * toPhysX, hoveredWindow.h * toPhysY,
+                            hoveredWindow.x, hoveredWindow.y, hoveredWindow.w, hoveredWindow.h
+                        );
+                        ctx.strokeStyle = '#0078d4'; ctx.lineWidth = 3;
+                        ctx.strokeRect(hoveredWindow.x, hoveredWindow.y, hoveredWindow.w, hoveredWindow.h);
+                    }
+                }
+                return;
+            }
+
+            if (!isDrawing || currentMode !== 'rect') return;
+            endX = pos.x; endY = pos.y;
+            redrawBase();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const rectX = Math.min(startX, endX), rectY = Math.min(startY, endY);
+            const rectW = Math.abs(endX - startX), rectH = Math.abs(endY - startY);
+            if (rectW > 0 && rectH > 0) {
+                const toPhysX = originalImage.naturalWidth / canvas.width;
+                const toPhysY = originalImage.naturalHeight / canvas.height;
+                ctx.drawImage(originalImage,
+                    rectX * toPhysX, rectY * toPhysY, rectW * toPhysX, rectH * toPhysY,
+                    rectX, rectY, rectW, rectH
+                );
+                ctx.strokeStyle = '#0078d4'; ctx.lineWidth = 2;
+                ctx.strokeRect(rectX, rectY, rectW, rectH);
+            }
+        });
+
+        // === MOUSEDOWN ===
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (annotateMode) return handleToolDown(e);
+            if (currentMode === 'rect') {
+                isDrawing = true;
+                const pos = getMousePos(e);
+                startX = pos.x; startY = pos.y;
+                endX = pos.x; endY = pos.y;
+            }
+        });
+
+        // === MOUSEUP ===
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (annotateMode) return handleToolUp(e);
+
+            const toPhysX = originalImage.naturalWidth / canvas.width;
+            const toPhysY = originalImage.naturalHeight / canvas.height;
+
+            if (currentMode === 'fullscreen') {
+                capturedRect = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+                capturedCanvas = document.createElement('canvas');
+                capturedCanvas.width = originalImage.naturalWidth;
+                capturedCanvas.height = originalImage.naturalHeight;
+                capturedCanvas.getContext('2d').drawImage(originalImage, 0, 0);
+            } else if (currentMode === 'window') {
+                if (!hoveredWindow) return;
+                capturedRect = { x: hoveredWindow.x, y: hoveredWindow.y, w: hoveredWindow.w, h: hoveredWindow.h };
+                capturedCanvas = document.createElement('canvas');
+                const physW = hoveredWindow.w * toPhysX, physH = hoveredWindow.h * toPhysY;
+                capturedCanvas.width = physW; capturedCanvas.height = physH;
+                capturedCanvas.getContext('2d').drawImage(originalImage,
+                    hoveredWindow.x * toPhysX, hoveredWindow.y * toPhysY, physW, physH,
+                    0, 0, physW, physH
+                );
+            } else if (currentMode === 'rect') {
+                if (!isDrawing) return;
+                isDrawing = false;
+                const rectX = Math.min(startX, endX), rectY = Math.min(startY, endY);
+                const rectW = Math.abs(endX - startX), rectH = Math.abs(endY - startY);
+                if (rectW < 10 || rectH < 10) return;
+                capturedRect = { x: rectX, y: rectY, w: rectW, h: rectH };
+                capturedCanvas = document.createElement('canvas');
+                const physX = rectX * toPhysX, physY = rectY * toPhysY;
+                const physW = rectW * toPhysX, physH = rectH * toPhysY;
+                capturedCanvas.width = physW; capturedCanvas.height = physH;
+                capturedCanvas.getContext('2d').drawImage(originalImage,
+                    physX, physY, physW, physH, 0, 0, physW, physH
+                );
+            }
+
+            enterAnnotate();
+        });
+
+        // === РАЗМЕТКА ===
+
+        function enterAnnotate() {
+            annotateMode = true;
+            actions = [];
+            redoStack = [];
+            toolbar.style.opacity = '0';
+            toolbar.style.pointerEvents = 'none';
+            annotateToolbar.classList.add('visible');
+            redrawAnnotated();
+            updateHint();
+            setTool('arrow');
+        }
+
+        function exitAnnotate() {
+            annotateMode = false;
+            annotateToolbar.classList.remove('visible');
+            textInput.style.display = 'none';
+            toolbar.style.opacity = '1';
+            toolbar.style.pointerEvents = 'auto';
+            capturedRect = null;
+            capturedCanvas = null;
+            currentTool = null;
+            actions = [];
+            redoStack = [];
+            redrawBase();
+            updateHint();
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            annotateButtons.forEach(b => b.classList.remove('active'));
+            const active = document.querySelector(`.annotateBtn[data-tool="${tool}"]`);
+            if (active) active.classList.add('active');
+            canvas.style.cursor = tool === 'text' ? 'text' : tool === 'blur' ? 'cell' : 'crosshair';
+        }
+
+        annotateButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setTool(btn.dataset.tool);
+            });
+        });
+
+        function canvasToCaptured(cx, cy) {
+            if (!capturedRect) return { x: cx, y: cy };
+            return {
+                x: (cx - capturedRect.x) * (capturedCanvas.width / capturedRect.w),
+                y: (cy - capturedRect.y) * (capturedCanvas.height / capturedRect.h)
+            };
+        }
+
+        function redrawAnnotated() {
+            if (!capturedCanvas || !capturedRect) return;
+            redrawBase();
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const toPhysX = originalImage.naturalWidth / canvas.width;
+            const toPhysY = originalImage.naturalHeight / canvas.height;
+            ctx.drawImage(originalImage,
+                capturedRect.x * toPhysX, capturedRect.y * toPhysY,
+                capturedRect.w * toPhysX, capturedRect.h * toPhysY,
+                capturedRect.x, capturedRect.y, capturedRect.w, capturedRect.h
+            );
+            ctx.strokeStyle = '#0078d4'; ctx.lineWidth = 2;
+            ctx.strokeRect(capturedRect.x, capturedRect.y, capturedRect.w, capturedRect.h);
+
+            const scale = capturedRect.w / capturedCanvas.width;
+            for (const action of actions) {
+                drawAction(ctx, action, scale, capturedRect);
+            }
+        }
+
+        function drawAction(c, action, scale, rect) {
+            const ox = rect.x, oy = rect.y;
+            c.save();
+
+            if (action.type === 'arrow') {
+                c.strokeStyle = COLORS.arrow; c.lineWidth = Math.max(2, 3 * scale);
+                c.beginPath();
+                c.moveTo(ox + action.x1 * scale, oy + action.y1 * scale);
+                c.lineTo(ox + action.x2 * scale, oy + action.y2 * scale);
+                c.stroke();
+                const angle = Math.atan2(action.y2 - action.y1, action.x2 - action.x1);
+                const headLen = Math.max(8, 14 * scale);
+                c.fillStyle = COLORS.arrow;
+                c.beginPath();
+                c.moveTo(ox + action.x2 * scale, oy + action.y2 * scale);
+                c.lineTo(ox + (action.x2 - headLen * Math.cos(angle - 0.4)) * scale, oy + (action.y2 - headLen * Math.sin(angle - 0.4)) * scale);
+                c.lineTo(ox + (action.x2 - headLen * Math.cos(angle + 0.4)) * scale, oy + (action.y2 - headLen * Math.sin(angle + 0.4)) * scale);
+                c.closePath(); c.fill();
+            } else if (action.type === 'rect') {
+                c.strokeStyle = COLORS.rect; c.lineWidth = Math.max(2, 3 * scale);
+                c.strokeRect(ox + action.x * scale, oy + action.y * scale, action.w * scale, action.h * scale);
+            } else if (action.type === 'line') {
+                c.strokeStyle = COLORS.line; c.lineWidth = Math.max(2, 3 * scale);
+                c.beginPath();
+                c.moveTo(ox + action.x1 * scale, oy + action.y1 * scale);
+                c.lineTo(ox + action.x2 * scale, oy + action.y2 * scale);
+                c.stroke();
+            } else if (action.type === 'text') {
+                const fontSize = action.fontSize;
+                c.fillStyle = COLORS.text;
+                c.font = `bold ${fontSize}px Arial`;
+                c.textBaseline = 'top';
+                // CSS→canvas: X через imgScale, Y через imgScaleY (отдельные масштабы!)
+                const drawX = action.cssX / imgScale;
+                const drawY = action.cssY / imgScaleY;
+                if (scale !== 1 || ox !== 0 || oy !== 0) {
+                    c.fillText(action.text,
+                        ox + (drawX - capturedRect.x) * (capturedCanvas.width / capturedRect.w),
+                        oy + (drawY - capturedRect.y) * (capturedCanvas.height / capturedRect.h));
+                } else {
+                    c.fillText(action.text, drawX, drawY);
+                }
+                c.textBaseline = 'alphabetic';
+            } else if (action.type === 'marker') {
+                c.fillStyle = COLORS.marker;
+                c.fillRect(ox + action.x * scale, oy + action.y * scale, action.w * scale, action.h * scale);
+                c.strokeStyle = COLORS.markerBorder;
+                c.lineWidth = Math.max(1, 2 * scale);
+                c.strokeRect(ox + action.x * scale, oy + action.y * scale, action.w * scale, action.h * scale);
+            } else if (action.type === 'blur') {
+                const blockSize = Math.max(4, Math.round(8 * scale));
+                const bx = ox + action.x * scale, by = oy + action.y * scale;
+                const bw = action.w * scale, bh = action.h * scale;
+                const tmpCanvas = document.createElement('canvas');
+                tmpCanvas.width = Math.max(1, Math.round(bw / blockSize));
+                tmpCanvas.height = Math.max(1, Math.round(bh / blockSize));
+                const tmpCtx = tmpCanvas.getContext('2d');
+                tmpCtx.drawImage(capturedCanvas, action.x, action.y, action.w, action.h, 0, 0, tmpCanvas.width, tmpCanvas.height);
+                c.imageSmoothingEnabled = false;
+                c.drawImage(tmpCanvas, bx, by, bw, bh);
+                c.imageSmoothingEnabled = true;
+            }
+
+            c.restore();
+        }
+
+        // === Инструмент MOUSEDOWN ===
+
+        function handleToolDown(e) {
+            if (!annotateMode || !currentTool) return;
+            const pos = getMousePos(e);
+
+            if (capturedRect &&
+                (pos.x < capturedRect.x || pos.x > capturedRect.x + capturedRect.w ||
+                 pos.y < capturedRect.y || pos.y > capturedRect.y + capturedRect.h)) {
+                return;
+            }
+
+            if (currentTool === 'text') {
+                showTextInput(pos.x, pos.y);
+                return;
+            }
+
+            isToolDrawing = true;
+            toolStartX = pos.x; toolStartY = pos.y;
+            toolEndX = pos.x; toolEndY = pos.y;
+        }
+
+        function handleToolMove(e) {
+            if (!isToolDrawing) return;
+            const pos = getMousePos(e);
+            toolEndX = pos.x; toolEndY = pos.y;
+            redrawAnnotated();
+            const cPos1 = canvasToCaptured(toolStartX, toolStartY);
+            const cPos2 = canvasToCaptured(toolEndX, toolEndY);
+            const scale = capturedRect.w / capturedCanvas.width;
+            const previewAction = buildAction(currentTool, cPos1, cPos2);
+            if (previewAction) drawAction(ctx, previewAction, scale, capturedRect);
+        }
+
+        function handleToolUp(e) {
+            if (!isToolDrawing) return;
+            isToolDrawing = false;
+            const cPos1 = canvasToCaptured(toolStartX, toolStartY);
+            const cPos2 = canvasToCaptured(toolEndX, toolEndY);
+            const action = buildAction(currentTool, cPos1, cPos2);
+            if (action) {
+                actions.push(action);
+                redoStack = [];
+            }
+            redrawAnnotated();
+        }
+
+        function buildAction(tool, p1, p2) {
+            const minX = Math.min(p1.x, p2.x), minY = Math.min(p1.y, p2.y);
+            const w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
+
+            if (tool === 'arrow' || tool === 'line') {
+                if (Math.abs(p2.x - p1.x) < 5 && Math.abs(p2.y - p1.y) < 5) return null;
+                return { type: tool, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+            }
+            if (tool === 'rect' || tool === 'marker' || tool === 'blur') {
+                if (w < 5 || h < 5) return null;
+                return { type: tool, x: minX, y: minY, w, h };
+            }
+            return null;
+        }
+
+        // === Текстовый инструмент ===
+        // Текст сохраняется в CSS-координатах (viewport pixels) — это то, что
+        // пользователь реально видит на экране. При рисовании на canvas CSS→canvas
+        // преобразование выполняется через imgScale, при отправке — через
+        // capturedRect/capturedCanvas. Это исключает двойное преобразование
+        // (CSS→canvas→capturedCanvas) и накопление ошибок масштабирования.
+
+        function showTextInput(cx, cy) {
+            isTextInputVisible = true;
+            // Сохраняем CSS-координаты клика (viewport pixels)
+            textInputCanvasPos = { cssX: cx * imgScale, cssY: cy * imgScaleY };
+
+            textInput.style.display = 'block';
+            textInput.style.left = (cx * imgScale) + 'px';
+            const TEXT_FONT_SIZE = 20;
+            textInput.style.top = ((cy * imgScaleY) - TEXT_FONT_SIZE / 2) + 'px';
+            textInput.value = '';
+            textInput.focus();
+        }
+
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = textInput.value.trim();
+                if (text && textInputCanvasPos) {
+                    actions.push({ 
+                        type: 'text', 
+                        cssX: textInputCanvasPos.cssX, 
+                        cssY: textInputCanvasPos.cssY, 
+                        text, 
+                        fontSize: 20 
+                    });
+                    redoStack = [];
+                    redrawAnnotated();
+                }
+                isTextInputVisible = false;
+                textInput.style.display = 'none';
+                textInputCanvasPos = null;
+            }
+            if (e.key === 'Escape') {
+                isTextInputVisible = false;
+                textInput.style.display = 'none';
+                textInputCanvasPos = null;
+            }
+            e.stopPropagation();
+        });
+
+        // === Undo / Redo ===
+
+        function undo() {
+            if (actions.length === 0) return;
+            redoStack.push(actions.pop());
+            redrawAnnotated();
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            actions.push(redoStack.pop());
+            redrawAnnotated();
+        }
+
+        undoBtn.addEventListener('click', (e) => { e.stopPropagation(); undo(); });
+        redoBtn.addEventListener('click', (e) => { e.stopPropagation(); redo(); });
+
+        // === Отправка ===
+
+        sendBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendAnnotated();
+        });
+
+        skipBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendOriginal();
+        });
+
+        async function sendAnnotated() {
+            if (!capturedCanvas) return;
+            hint.textContent = 'Отправка размеченного снимка...';
+
+            const annCtx = capturedCanvas.getContext('2d');
+            for (const action of actions) {
+                drawAction(annCtx, action, 1, { x: 0, y: 0, w: capturedCanvas.width, h: capturedCanvas.height });
+            }
+
+            const dataUrl = capturedCanvas.toDataURL('image/png');
+            const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+            await window.electronAPI.uploadFile({ fileData: base64Data, type: 'image', monitorIndex: currentDisplayIndex });
+            window.close();
+        }
+
+        async function sendOriginal() {
+            if (!capturedCanvas) return;
+            hint.textContent = 'Отправка оригинала...';
+
+            const dataUrl = capturedCanvas.toDataURL('image/png');
+            const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+            await window.electronAPI.uploadFile({ fileData: base64Data, type: 'image', monitorIndex: currentDisplayIndex });
+            window.close();
+        }
+    </script>
+</body>
+</html>

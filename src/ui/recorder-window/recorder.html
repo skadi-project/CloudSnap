@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src *;">
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        video, canvas { display: none; }
+    </style>
+</head>
+<body>
+    <video id="captureVideo" autoplay muted playsinline></video>
+    <canvas id="cropCanvas"></canvas>
+    <script>
+        const video = document.getElementById('captureVideo');
+        const cropCanvas = document.getElementById('cropCanvas');
+        const cropCtx = cropCanvas.getContext('2d');
+
+        let mediaRecorder = null;
+        let isPaused = false;
+        let lastFrameData = null;
+        let cropRect = null;
+        let cropLoopRunning = false;
+        let recordStream = null;
+        let videoStream = null;
+        let pendingChunks = 0;
+        let stopRequested = false;
+        let finished = false;
+
+        function checkFinished() {
+            if (stopRequested && pendingChunks === 0 && !finished) {
+                doFinish();
+            }
+        }
+
+        function doFinish() {
+            if (finished) return;
+            finished = true;
+            cropLoopRunning = false;
+            if (videoStream) {
+                videoStream.getTracks().forEach(t => t.stop());
+                videoStream = null;
+            }
+            recordStream = null;
+            mediaRecorder = null;
+            window.electronAPI.sendRecordingFinished();
+        }
+
+        window.electronAPI.onInitRecording(async (config) => {
+            pendingChunks = 0;
+            stopRequested = false;
+            finished = false;
+            isPaused = false;
+            lastFrameData = null;
+            cropLoopRunning = false;
+
+            try {
+                const constraints = {
+                    video: {
+                        mandatory: {
+                            chromeMediaSource: 'desktop',
+                            chromeMediaSourceId: config.sourceId
+                        }
+                    }
+                };
+
+                if (config.audio) {
+                    constraints.audio = {
+                        mandatory: {
+                            chromeMediaSource: 'desktop',
+                            chromeMediaSourceId: config.sourceId
+                        }
+                    };
+                }
+
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = videoStream;
+                await video.play();
+
+                cropRect = config.cropRect;
+
+                if (cropRect) {
+                    cropCanvas.width = cropRect.w;
+                    cropCanvas.height = cropRect.h;
+
+                    cropLoopRunning = true;
+
+                    function cropDraw() {
+                        if (!cropLoopRunning) return;
+
+                        if (!isPaused) {
+                            cropCtx.drawImage(video,
+                                cropRect.x, cropRect.y, cropRect.w, cropRect.h,
+                                0, 0, cropCanvas.width, cropCanvas.height
+                            );
+                            lastFrameData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
+                        } else {
+                            if (lastFrameData) {
+                                cropCtx.putImageData(lastFrameData, 0, 0);
+                            }
+                        }
+
+                        requestAnimationFrame(cropDraw);
+                    }
+                    cropDraw();
+
+                    recordStream = cropCanvas.captureStream(config.fps || 30);
+
+                    if (config.audio && videoStream.getAudioTracks().length > 0) {
+                        recordStream.addTrack(videoStream.getAudioTracks()[0]);
+                    }
+                } else {
+                    recordStream = videoStream;
+                }
+
+                let mimeType = 'video/webm;codecs=vp9,opus';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8,opus';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp9';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm';
+                }
+
+                const options = { mimeType };
+                if (config.bitrate) {
+                    options.videoBitsPerSecond = config.bitrate;
+                }
+
+                mediaRecorder = new MediaRecorder(recordStream, options);
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) {
+                        pendingChunks++;
+                        e.data.arrayBuffer().then(buf => {
+                            window.electronAPI.sendRecordingChunk(new Uint8Array(buf));
+                            pendingChunks--;
+                            checkFinished();
+                        });
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    checkFinished();
+                };
+
+                mediaRecorder.onerror = (e) => {
+                    console.error('MediaRecorder error:', e);
+                    doFinish();
+                };
+
+                mediaRecorder.start(1000);
+
+            } catch (err) {
+                console.error('Failed to start recording:', err);
+                if (videoStream) {
+                    videoStream.getTracks().forEach(t => t.stop());
+                    videoStream = null;
+                }
+                window.electronAPI.sendRecordingFinished();
+            }
+        });
+
+        window.electronAPI.onPauseRecording(() => {
+            isPaused = true;
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+            }
+        });
+
+        window.electronAPI.onResumeRecording(() => {
+            isPaused = false;
+            if (mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+            }
+        });
+
+        window.electronAPI.onStopRecording(() => {
+            stopRequested = true;
+            if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+                mediaRecorder.stop();
+            }
+            checkFinished();
+        });
+    </script>
+</body>
+</html>

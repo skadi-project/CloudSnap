@@ -1,0 +1,91 @@
+{
+  "name": "Cloud-snap",
+  "version": "1.0.0",
+  "description": "Скриншотер и запись экрана для Nextcloud",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "tsc && electron .",
+    "build:win": "tsc && electron-builder --win",
+    "build:mac": "tsc && electron-builder --mac",
+    "build:all": "tsc && electron-builder --win --mac"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "webdav": "^4.11.3"
+  },
+  "devDependencies": {
+    "@types/electron": "^1.4.38",
+    "@types/node": "^26.0.1",
+    "cpx": "^1.5.0",
+    "electron": "^28.2.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.Cloudsnap.screener",
+    "productName": "CloudSnap",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "icon.ico",
+      "icon.icns",
+      "tray-icon.png",
+      "tray-icon-mac.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "forceCodeSigning": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.icns",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "CloudSnap записывает системный звук при записи экрана.",
+        "NSScreenCaptureUsageDescription": "CloudSnap захватывает экран для создания снимков и записи видео.",
+        "CFBundleName": "CloudSnap",
+        "CFBundleDisplayName": "CloudSnap"
+      }
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "ru"
+      ],
+      "language": 1049
+    }
+  },
+  "allowScripts": {
+    "core-js@2.6.12": true,
+    "electron@28.3.3": true
+  }
+}

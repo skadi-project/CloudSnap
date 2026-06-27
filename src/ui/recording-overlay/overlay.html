@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: transparent;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            -webkit-app-region: no-drag;
+        }
+        #indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(30, 30, 30, 0.92);
+            border-radius: 8px;
+            padding: 8px 14px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+            height: 34px;
+        }
+        #recDot {
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #ff3333;
+            animation: pulse 1s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        #recDot.paused {
+            background: #ffcc00;
+            animation: none;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        #timer {
+            color: #fff; font-size: 14px; min-width: 50px;
+            font-variant-numeric: tabular-nums;
+        }
+        #pauseBtn, #stopBtn {
+            border: none; border-radius: 4px; padding: 4px 8px;
+            cursor: pointer; font-size: 12px; color: #fff;
+            display: flex; align-items: center; gap: 4px;
+            transition: background 0.15s;
+        }
+        .ov-icon { width: 14px; height: 14px; display: inline-block; vertical-align: middle; flex-shrink: 0; }
+        #pauseBtn { background: #555; }
+        #pauseBtn:hover { background: #777; }
+        #stopBtn { background: #c00; }
+        #stopBtn:hover { background: #a00; }
+    </style>
+</head>
+<body>
+    <div id="indicator">
+        <div id="recDot"></div>
+        <span id="timer">00:00</span>
+        <button id="pauseBtn"><svg class="ov-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
+        <button id="stopBtn"><svg class="ov-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Стоп</button>
+    </div>
+    <script>
+        const recDot = document.getElementById('recDot');
+        const timer = document.getElementById('timer');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+
+        window.electronAPI.onRecordingStarted(() => {});
+
+        window.electronAPI.onRecordingTimerUpdate((seconds) => {
+            timer.textContent = formatTime(seconds);
+        });
+
+        window.electronAPI.onRecordingPaused(() => {
+            recDot.classList.add('paused');
+            pauseBtn.innerHTML = '<svg class="ov-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>';
+        });
+
+        window.electronAPI.onRecordingResumed(() => {
+            recDot.classList.remove('paused');
+            pauseBtn.innerHTML = '<svg class="ov-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+        });
+
+        pauseBtn.addEventListener('click', async () => {
+            await window.electronAPI.togglePauseRecording();
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            await window.electronAPI.stopRecording();
+        });
+    </script>
+</body>
+</html>

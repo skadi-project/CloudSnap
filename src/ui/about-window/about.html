@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>О программе CloudSnap</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0f0f0;
+            color: #000;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            font-size: 9pt;
+            overflow: hidden;
+            position: relative;
+            -webkit-app-region: no-drag;
+        }
+
+        .top-section {
+            display: flex;
+            align-items: flex-start;
+            padding: 16px 20px 0 20px;
+            gap: 18px;
+        }
+
+        .logo-area {
+            width: 64px;
+            height: 64px;
+            flex-shrink: 0;
+        }
+        .logo-area img {
+            width: 64px;
+            height: 64px;
+        }
+
+        .info-area {
+            flex: 1;
+            padding-top: 2px;
+        }
+        .product-name {
+            font-size: 12pt;
+            font-weight: 700;
+            color: #000;
+            margin-bottom: 8px;
+        }
+        .version-line {
+            font-size: 9pt;
+            color: #000;
+            margin-bottom: 4px;
+        }
+        .desc-line {
+            font-size: 9pt;
+            color: #000;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+
+        .separator {
+            margin: 14px 20px 10px 20px;
+            height: 1px;
+            background: #c0c0c0;
+        }
+
+        .bottom-section {
+            padding: 4px 20px 0 20px;
+        }
+        .copyright-line {
+            font-size: 8pt;
+            color: #444;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-section">
+        <div class="logo-area">
+        <img src="../../../tray-icon.png" alt="CloudSnap" style="width:64px;height:64px;">
+        </div>
+
+        <div class="info-area">
+            <div class="product-name">CloudSnap</div>
+            <div class="version-line">Версия 1.0.0</div>
+            <div class="desc-line">
+                Скриншотер и запись экрана с<br>
+                автоматической выгрузкой в Nextcloud
+            </div>
+        </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <div class="bottom-section">
+        <div class="copyright-line">
+            © 2026 CloudSnap. Все права защищены.<br>
+            Захват экрана • Запись видео • Разметка снимков • Очередь отправки
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                          /* Современный стандарт JS, поддерживаемый Electron */
+    "module": "commonjs",                        /* Стандарт модулей для Main-процесса Electron */
+    "strict": true,                              /* Строгая проверка типов */
+    "esModuleInterop": true,                     /* Корректная работа с require/import */
+    "skipLibCheck": true,                        /* Пропуск проверки типов в node_modules */
+    "forceConsistentCasingInFileNames": true     /* Чувствительность к регистру в именах файлов */
+  },
+  "include": [
+    "main.ts",
+    "preload.ts",
+    "src/**/*"
+  ]
+}
