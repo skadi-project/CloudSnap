@@ -431,7 +431,7 @@
 
         // === MOUSEUP ===
 
-        canvas.addEventListener('mouseup', (e) => {
+        canvas.addEventListener('mouseup', async (e) => {
             if (annotateMode) return handleToolUp(e);
 
             const toPhysX = originalImage.naturalWidth / canvas.width;
@@ -443,9 +443,37 @@
                 capturedCanvas.width = originalImage.naturalWidth;
                 capturedCanvas.height = originalImage.naturalHeight;
                 capturedCanvas.getContext('2d').drawImage(originalImage, 0, 0);
+                enterAnnotate();
             } else if (currentMode === 'window') {
                 if (!hoveredWindow) return;
                 capturedRect = { x: hoveredWindow.x, y: hoveredWindow.y, w: hoveredWindow.w, h: hoveredWindow.h };
+                hint.textContent = 'Захват окна...';
+
+                // Если у окна есть sourceId из desktopCapturer — делаем per-window capture
+                // через getUserMedia. Это возвращает ЧИСТОЕ содержимое окна без
+                // перекрывающих приложений (в отличие от crop со скриншота экрана).
+                if (hoveredWindow.sourceId) {
+                    try {
+                        const cleanDataURL = await captureWindowBySourceId(hoveredWindow.sourceId);
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = cleanDataURL;
+                        });
+                        capturedCanvas = document.createElement('canvas');
+                        capturedCanvas.width = img.naturalWidth;
+                        capturedCanvas.height = img.naturalHeight;
+                        capturedCanvas.getContext('2d').drawImage(img, 0, 0);
+                        enterAnnotate();
+                        return;
+                    } catch (err) {
+                        console.warn('[capture] per-window capture failed, falling back to screen crop:', err);
+                        // fallthrough to screen crop
+                    }
+                }
+
+                // Fallback: crop со скриншота экрана (если sourceId нет или getUserMedia упал)
                 capturedCanvas = document.createElement('canvas');
                 const physW = hoveredWindow.w * toPhysX, physH = hoveredWindow.h * toPhysY;
                 capturedCanvas.width = physW; capturedCanvas.height = physH;
@@ -453,6 +481,7 @@
                     hoveredWindow.x * toPhysX, hoveredWindow.y * toPhysY, physW, physH,
                     0, 0, physW, physH
                 );
+                enterAnnotate();
             } else if (currentMode === 'rect') {
                 if (!isDrawing) return;
                 isDrawing = false;
@@ -467,10 +496,51 @@
                 capturedCanvas.getContext('2d').drawImage(originalImage,
                     physX, physY, physW, physH, 0, 0, physW, physH
                 );
+                enterAnnotate();
             }
-
-            enterAnnotate();
         });
+
+        /**
+         * Per-window capture через desktopCapturer window source.
+         * getUserMedia с sourceId='window:XXX' даёт MediaStream с ЧИСТЫМ содержимым
+         * конкретного окна — без перекрывающих приложений.
+         * Возвращает data:image/png;base64,...
+         */
+        async function captureWindowBySourceId(sourceId) {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: sourceId
+                    }
+                }
+            });
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            video.playsInline = true;
+            await video.play();
+
+            // Ждём первый кадр с реальными размерами
+            await new Promise((resolve) => {
+                if (video.videoWidth > 0) return resolve();
+                video.addEventListener('loadedmetadata', resolve, { once: true });
+            });
+            // Дополнительный tick чтобы кадр точно отрисовался
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            const offscreen = document.createElement('canvas');
+            offscreen.width = w;
+            offscreen.height = h;
+            offscreen.getContext('2d').drawImage(video, 0, 0, w, h);
+
+            // Останавливаем треки — окно нам больше не нужно
+            stream.getTracks().forEach(t => t.stop());
+
+            return offscreen.toDataURL('image/png');
+        }
 
         // === РАЗМЕТКА ===
 

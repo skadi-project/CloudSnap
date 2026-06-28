@@ -1,4 +1,4 @@
-console.log("Renderer.ts загружен");
+﻿console.log("Renderer.ts загружен");
 
 // === Интерфейсы для Electron API ===
 interface Credentials {
@@ -125,7 +125,6 @@ const saveLocalCopyCheckbox = document.getElementById('saveLocalCopy') as HTMLIn
 const openScreenshotsBtn = document.getElementById('openScreenshotsBtn') as HTMLButtonElement | null;
 const saveSettingsBtn = document.getElementById('saveSettingsBtn') as HTMLButtonElement | null;
 
-const modeRadios = document.querySelectorAll('input[name="screenshotMode"]') as NodeListOf<HTMLInputElement>;
 
 const historyList = document.getElementById('historyList') as HTMLElement | null;
 const historyEmpty = document.getElementById('historyEmpty') as HTMLElement | null;
@@ -299,10 +298,7 @@ async function initForm(): Promise<void> {
             }
         }
 
-        const savedMode = await window.electronAPI.getScreenshotMode();
-        modeRadios.forEach(radio => {
-            if (radio.value === savedMode) radio.checked = true;
-        });
+
     } catch (err) {
         console.error("Ошибка initForm:", err);
     }
@@ -374,22 +370,7 @@ if (saveBtn) {
     });
 }
 
-modeRadios.forEach(radio => {
-    radio.addEventListener('change', async (e) => {
-        const target = e.target as HTMLInputElement;
-        if (target.checked) {
-            await window.electronAPI.setScreenshotMode(target.value);
-        }
-    });
-});
 
-if (window.electronAPI && typeof window.electronAPI.onScreenshotModeChanged === 'function') {
-    window.electronAPI.onScreenshotModeChanged((mode) => {
-        modeRadios.forEach(radio => {
-            radio.checked = radio.value === mode;
-        });
-    });
-}
 
 if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function') {
     window.electronAPI.onStatusUpdate((message) => {
@@ -406,37 +387,32 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
     });
 }
 
+
 // === Connection status monitor ===
 let isDisconnected = false;
 const connectionStatus = document.getElementById('connectionStatus') as HTMLElement | null;
 
 if (window.electronAPI && window.electronAPI.onConnectionStatus) {
     window.electronAPI.onConnectionStatus((data: { status: string; message: string }) => {
-        if (!statusLog) return;
         if (data.status === 'disconnected') {
             isDisconnected = true;
-            statusLog.innerText = data.message;
-            statusLog.style.color = '#f44336';
-            if (connectionStatus) { connectionStatus.innerText = 'Соединение потеряно'; connectionStatus.style.color = '#f44336'; }
+            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#f44336'; }
+            if (connectionStatus) { connectionStatus.innerText = 'Соединение потеряно'; connectionStatus.classList.remove('connected', 'reconnecting', 'checking'); connectionStatus.classList.add('disconnected'); }
         } else if (data.status === 'reconnecting') {
-            statusLog.innerText = data.message;
-            statusLog.style.color = '#ff9800';
-            if (connectionStatus) { connectionStatus.innerText = data.message; connectionStatus.style.color = '#ff9800'; }
+            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#ff9800'; }
+            if (connectionStatus) { connectionStatus.innerText = data.message; connectionStatus.classList.remove('connected', 'disconnected', 'checking'); connectionStatus.classList.add('reconnecting'); }
         } else if (data.status === 'connected') {
             if (isDisconnected) {
                 isDisconnected = false;
-                statusLog.innerText = data.message;
-                statusLog.style.color = '#4caf50';
-                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.style.color = '#4caf50'; }
+                if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#4caf50'; }
+                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.classList.remove('disconnected', 'reconnecting', 'checking'); connectionStatus.classList.add('connected'); }
             } else {
-                statusLog.innerText = data.message;
-                statusLog.style.color = '#4caf50';
-                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.style.color = '#4caf50'; }
+                if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#4caf50'; }
+                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.classList.remove('disconnected', 'reconnecting', 'checking'); connectionStatus.classList.add('connected'); }
             }
         } else if (data.status === 'checking') {
-            statusLog.innerText = data.message;
-            statusLog.style.color = '#aaa';
-            if (connectionStatus) { connectionStatus.innerText = 'Проверка соединения...'; connectionStatus.style.color = '#aaa'; }
+            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#aaa'; }
+            if (connectionStatus) { connectionStatus.innerText = 'Проверка соединения...'; connectionStatus.classList.remove('connected', 'disconnected', 'reconnecting'); connectionStatus.classList.add('checking'); }
         }
         if (statusContainer) statusContainer.style.display = 'block';
     });
@@ -566,7 +542,7 @@ async function renderHistory(): Promise<void> {
         card.dataset.id = item.id;
 
         let thumbSrc = '';
-        if (item.type !== 'video' && item.thumbnailPath) {
+        if (item.thumbnailPath) {
             try {
                 thumbSrc = 'file://' + item.thumbnailPath.replace(/\\/g, '/');
             } catch (e) {
@@ -578,7 +554,9 @@ async function renderHistory(): Promise<void> {
         const hasNC = item.status === 'uploaded' && item.filePath;
 
         const thumbContent = item.type === 'video'
-            ? `<div class="history-thumb" style="background:#1a1a1a; display:flex; align-items:center; justify-content:center;">${SVG.film}</div>`
+            ? (thumbSrc
+                ? `<div class="history-thumb history-thumb-video"><img src="${thumbSrc}" alt="" onerror="this.outerHTML='${SVG.film}'"><div class="history-thumb-play">${SVG.film}</div></div>`
+                : `<div class="history-thumb" style="background:#1a1a1a; display:flex; align-items:center; justify-content:center;">${SVG.film}</div>`)
             : `<img class="history-thumb" src="${thumbSrc}" alt="" onerror="this.style.background='#eee'">`;
 
         card.innerHTML = `

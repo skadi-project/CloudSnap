@@ -9,6 +9,7 @@ export interface WindowBounds {
     y: number;
     w: number;
     h: number;
+    title: string; // base64-encoded title (для матчинга с desktopCapturer)
 }
 
 // Интерфейс для информации о трей-иконке
@@ -17,13 +18,21 @@ export interface TrayIconInfo {
     isTemplate: boolean;
 }
 
+// Утилита для base64-кодирования UTF-8 строки в JXA/AppleScript-контексте
+function b64Encode(s: string): string {
+    return Buffer.from(s, 'utf8').toString('base64');
+}
+function b64Decode(s: string): string {
+    try { return Buffer.from(s, 'base64').toString('utf8'); } catch { return ''; }
+}
+
 /**
  * Получение координат и размеров видимых окон на macOS.
  * Использует JXA (System Events) через osascript для перечисления окон,
  * а screen height берётся из Electron — не нужен ObjC.bridge.
  *
- * Возвращает массив { x, y, w, h } в top-left координатах,
- * совместимых с desktopCapturer thumbnail.
+ * Возвращает массив { x, y, w, h, title } в top-left координатах,
+ * совместимых с desktopCapturer thumbnail. Title — base64.
  */
 export function getWindowBounds(): WindowBounds[] {
     if (process.platform !== 'darwin') return [];
@@ -34,19 +43,31 @@ var sysEvents = Application('System Events');
 var lines = [];
 var procs = sysEvents.processes.whose({visible: true, backgroundOnly: false});
 
+// Хелпер для base64 (используем встроенную ObjC через JXA)
+ObjC.import('Foundation');
+function b64(s) {
+    if (!s) return '';
+    var data = $.NSString.alloc.initWithUTF8String(s).dataUsingEncoding($.NSUTF8StringEncoding);
+    return ObjC.unwrap(data.base64EncodedStringWithOptions(0));
+}
+
 for (var i = 0; i < procs.length; i++) {
     try {
         var wins = procs[i].windows();
         for (var j = 0; j < wins.length; j++) {
-            var pos = wins[j].position();
-            var sz = wins[j].size();
-            var x = pos[0];
-            var y = pos[1];
-            var w = sz[0];
-            var h = sz[1];
-            if (w > 100 && h > 100 && x >= 0) {
-                lines.push(x + ',' + y + ',' + w + ',' + h);
-            }
+            try {
+                var pos = wins[j].position();
+                var sz = wins[j].size();
+                var x = pos[0];
+                var y = pos[1];
+                var w = sz[0];
+                var h = sz[1];
+                if (w > 100 && h > 100 && x >= 0) {
+                    var title = wins[j].name();
+                    var titleB64 = b64(title || '');
+                    lines.push(x + ',' + y + ',' + w + ',' + h + ',' + titleB64);
+                }
+            } catch(e) {}
         }
     } catch(e) {}
 }
@@ -64,9 +85,15 @@ lines.join('|');
         // macOS Accessibility API возвращает логические (top-left) координаты,
         // они совместимы с Electron display.bounds
         return output.split('|').map((line): WindowBounds | null => {
-            const parts = line.split(',').map(Number);
-            if (parts.length !== 4 || parts.some(n => !isFinite(n))) return null;
-            return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+            const parts = line.split(',');
+            if (parts.length < 5) return null;
+            const x = Number(parts[0]);
+            const y = Number(parts[1]);
+            const w = Number(parts[2]);
+            const h = Number(parts[3]);
+            if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return null;
+            const titleB64 = parts.slice(4).join(',');
+            return { x, y, w, h, title: b64Decode(titleB64) };
         }).filter((item): item is WindowBounds => item !== null);
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
@@ -82,20 +109,32 @@ lines.join('|');
 export function getWindowBoundsAppleScript(): WindowBounds[] {
     try {
         const appleScript = `
+on b64(s)
+    try
+        do shell script "echo -n " & quoted form of s & " | base64"
+    on error
+        return ""
+    end try
+end b64
+
 tell application "System Events"
     set output to ""
     repeat with proc in (every process whose visible is true and background only is false)
         try
             repeat with w in (every window of proc)
-                set winPos to position of w
-                set winSize to size of w
-                set x to item 1 of winPos
-                set y to item 2 of winPos
-                set wWidth to item 1 of winSize
-                set wHeight to item 2 of winSize
-                if wWidth > 100 and wHeight > 100 then
-                    set output to output & x & "," & y & "," & wWidth & "," & wHeight & "|"
-                end if
+                try
+                    set winPos to position of w
+                    set winSize to size of w
+                    set x to item 1 of winPos
+                    set y to item 2 of winPos
+                    set wWidth to item 1 of winSize
+                    set wHeight to item 2 of winSize
+                    if wWidth > 100 and wHeight > 100 then
+                        set winTitle to name of w
+                        set titleB64 to b64(winTitle)
+                        set output to output & x & "," & y & "," & wWidth & "," & wHeight & "," & titleB64 & "|"
+                    end if
+                end try
             end repeat
         end try
     end repeat
@@ -112,9 +151,15 @@ end tell
         if (!output) return [];
 
         return output.split('|').filter(s => s.length > 0).map((line): WindowBounds | null => {
-            const parts = line.split(',').map(Number);
-            if (parts.length !== 4 || parts.some(n => !isFinite(n))) return null;
-            return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+            const parts = line.split(',');
+            if (parts.length < 5) return null;
+            const x = Number(parts[0]);
+            const y = Number(parts[1]);
+            const w = Number(parts[2]);
+            const h = Number(parts[3]);
+            if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return null;
+            const titleB64 = parts.slice(4).join(',');
+            return { x, y, w, h, title: b64Decode(titleB64) };
         }).filter((item): item is WindowBounds => item !== null);
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);

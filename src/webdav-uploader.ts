@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
-import { createClient } from 'webdav';
+import { Readable } from 'stream';
+import { createClient, WebDAVClient } from 'webdav';
 
 // Интерфейс для результата загрузки файла
 export interface UploadResult {
@@ -24,8 +25,31 @@ export interface ShareResult {
 }
 
 /**
- * Загрузка файла на Nextcloud через WebDAV с автоматическим рекурсивным созданием папок.
+ * Создаёт http/https агенты без лимитов на размер тела запроса/ответа.
+ * По умолчанию Node.js http ставит maxHeaderSize и через axios (который
+ * использует webdav) есть лимит на размер тела — отключаем.
  */
+function createAgents() {
+    return {
+        httpAgent: new http.Agent({ keepAlive: true }),
+        httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: true })
+    };
+}
+
+/**
+ * Загрузка файла на Nextcloud через WebDAV с автоматическим рекурсивным созданием папок.
+ *
+ * Поддерживает файлы любого размера:
+ * - Для файлов <= 50 МБ отправляем как Buffer (быстрее)
+ * - Для файлов > 50 МБ передаём как Readable stream — webdav библиотека
+ *   использует chunked transfer encoding.
+ *
+ * Лимит на размер файла задаётся сервером Nextcloud (php_value upload_max_filesize
+ * и post_max_size в php.ini, по умолчанию 2 ГБ). Клиентского ограничения нет —
+ * на http/https агентах выставлен keepAlive без лимитов на body.
+ */
+const STREAMING_THRESHOLD = 50 * 1024 * 1024; // 50 МБ
+
 export async function uploadToNextcloud(
     targetUrl: string,
     login: string,
@@ -36,20 +60,23 @@ export async function uploadToNextcloud(
     try {
         const baseUrl = targetUrl.endsWith('/') ? targetUrl : targetUrl + '/';
         const urlParts = new URL(targetUrl);
-        
+
         // url.pathname сохраняет percent-encoding (%D0%A1...), НЕ декодирует.
         // Нужно вручную decodeURIComponent, чтобы получить кириллические строки.
         const pathParts = urlParts.pathname.split('/').filter(Boolean).map(decodeURIComponent);
         const webdavIdx = pathParts.indexOf('webdav');
         const folderPath = webdavIdx >= 0 ? pathParts.slice(webdavIdx + 1) : [pathParts[pathParts.length - 1] || ''];
 
-        console.log(`[WebDAV] targetUrl: ${targetUrl}, folderPath: ${folderPath.join('/') || '(пусто)'}`);
+        console.log(`[WebDAV] targetUrl: ${targetUrl}, folderPath: ${folderPath.join('/') || '(пусто)'}, size: ${buffer.length} bytes`);
+
+        const agents = createAgents();
 
         // Создаём клиента на базовом уровне /remote.php/webdav/
         const baseWebdavUrl = `${urlParts.origin}/remote.php/webdav/`;
         const baseClient = createClient(baseWebdavUrl, {
             username: login,
-            password: password
+            password: password,
+            ...agents
         });
 
         // Рекурсивное создание вложенных папок
@@ -67,21 +94,39 @@ export async function uploadToNextcloud(
             }
         }
 
-        const client = createClient(baseUrl, {
+        const client: WebDAVClient = createClient(baseUrl, {
             username: login,
-            password: password
-        });
+            password: password,
+            ...agents,
+            // Снимаем дефолтные лимиты axios через maxBodyLength/maxContentLength
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity
+        } as any);
 
-        // filename передаётся как есть — библиотека webdav URL-encode'ит его
-        await client.putFileContents(`/${filename}`, buffer);
+        // Для больших файлов используем стрим, чтобы избежать
+        // ограничений Buffer pooling и max-old-size в Node.js HTTP.
+        if (buffer.length > STREAMING_THRESHOLD) {
+            console.log(`[WebDAV] Файл > 50 МБ, используем streaming upload`);
+            const stream = Readable.from(buffer, { objectMode: false });
+            await client.putFileContents(`/${filename}`, stream as any);
+        } else {
+            await client.putFileContents(`/${filename}`, buffer);
+        }
 
         const fileUrl = `${baseUrl}${encodeURIComponent(filename)}`;
         // filePath — декодированный путь для OCS API (/Скриншоты/file.png)
         const filePath = '/' + folderPath.join('/') + '/' + filename;
 
         return { success: true, url: fileUrl, filePath };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Ошибка WebDAV:', error);
+        // Специальная обработка 413 — файл превышает серверный лимит
+        if (error?.status === 413 || error?.response?.status === 413) {
+            return {
+                success: false,
+                error: 'Файл слишком большой. Увеличьте лимит upload_max_filesize на сервере Nextcloud.'
+            };
+        }
         return {
             success: false,
             error: 'Ошибка сети. Файл добавлен в очередь отправки.'
@@ -118,6 +163,7 @@ export async function testConnection(url: string, login: string, password: strin
 
 /**
  * Создание публичной ссылки через Nextcloud OCS Share API.
+ * Таймаут увеличен до 60с — для больших файлов серверу нужно больше времени.
  */
 export async function createPublicShare(
     serverUrl: string,
@@ -171,9 +217,9 @@ export async function createPublicShare(
                 });
             });
 
-            req.setTimeout(15000, () => {
+            req.setTimeout(60000, () => {
                 req.destroy();
-                resolve({ success: false, error: 'Таймаут создания публичной ссылки (15 сек)' });
+                resolve({ success: false, error: 'Таймаут создания публичной ссылки (60 сек)' });
             });
 
             req.on('error', (e) => {

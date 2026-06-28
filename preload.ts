@@ -4,7 +4,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveCredentials: (config: any) => ipcRenderer.invoke('save-credentials', config),
     loadCredentials: () => ipcRenderer.invoke('load-credentials'),
     uploadFile: (data: any) => ipcRenderer.invoke('upload-file', data),
-    copyToClipboard: (text: string) => ipcRenderer.send('copy-to-clipboard', text),
     onScreenshotCaptured: (callback: (data: any) => void) =>
         ipcRenderer.on('screenshot-captured', (_event: IpcRendererEvent, data: any) => callback(data)),
     onScreenshotModeChanged: (callback: (mode: string) => void) =>
@@ -27,8 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // === Monitor picker ===
     onDisplaysList: (callback: (data: any) => void) =>
         ipcRenderer.on('displays-list', (_event: IpcRendererEvent, data: any) => callback(data)),
-    selectMonitor: (displayId: any) => ipcRenderer.send('monitor-selected', displayId),
-    cancelMonitorPicker: () => ipcRenderer.send('monitor-picker-cancelled'),
+    selectMonitor: (displayId: any) => ipcRenderer.send('selectMonitor', displayId),
+    cancelMonitorPicker: () => ipcRenderer.send('cancelMonitorPicker'),
 
     // === Capture: multi-monitor ===
     onCaptureDisplaySwitched: (callback: (data: any) => void) =>
@@ -67,8 +66,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('stop-recording', (_event: IpcRendererEvent) => callback()),
 
     // === Recording: recorder → main (data transfer) ===
-    sendRecordingChunk: (data: any) => ipcRenderer.send('recording-chunk', data),
+    sendRecordingChunk: (data: any, sessionId: string) => ipcRenderer.send('recording-chunk', data, sessionId),
     sendRecordingFinished: () => ipcRenderer.send('recording-finished'),
+    sendRecordingFirstFrame: (ts: number) => ipcRenderer.send('recording-first-frame', ts),
+    sendRecordingThumbnail: (base64: string) => ipcRenderer.send('recording-thumbnail', base64),
 
     // === Recording: overlay window (main → overlay) ===
     onRecordingStarted: (callback: (data: any) => void) =>

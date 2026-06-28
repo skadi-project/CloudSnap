@@ -21,12 +21,24 @@ export function generateFilename(
 ): string {
     const now = options.date instanceof Date ? options.date : new Date();
     const user = sanitizeFilenamePart(options.user || 'user');
-    const ext = options.ext || (type === 'video' ? 'webm' : 'png');
+    // По умолчанию видео теперь в MP4 (H.264/AAC через Mediabunny WebCodecs),
+    // а не в WebM. Можно переопределить через options.ext.
+    const ext = options.ext || (type === 'video' ? 'mp4' : 'png');
     const fileType = type === 'video' ? 'video' : 'image';
 
-    const date = now.toISOString().slice(0, 10);
-    const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-    const datetime = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    // ВАЖНО: используем ЛОКАЛЬНОЕ время компьютера, на котором сделан снимок,
+    // а не UTC. toISOString() возвращает UTC — для пользователя имя файла
+    // «убегает» на несколько часов. Геттеры Date всегда дают локальное время.
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const mm = pad2(now.getMonth() + 1);
+    const dd = pad2(now.getDate());
+    const HH = pad2(now.getHours());
+    const MM = pad2(now.getMinutes());
+    const SS = pad2(now.getSeconds());
+    const date = `${yyyy}-${mm}-${dd}`;
+    const time = `${HH}-${MM}-${SS}`;
+    const datetime = `${date}_${HH}-${MM}-${SS}`;
 
     const resolvedTemplate = template && template.trim() ? template.trim() : DEFAULT_TEMPLATE;
 
@@ -38,14 +50,18 @@ export function generateFilename(
         .replace(/\{user\}/g, user)
         .replace(/\{monitor\}/g, sanitizeFilenamePart(options.monitor != null ? options.monitor : '1'));
 
-    name = sanitizeFilenamePart(name.replace(/\.(png|webm|jpg|jpeg)$/i, ''));
+    name = sanitizeFilenamePart(name.replace(/\.(png|webm|mp4|jpg|jpeg)$/i, ''));
 
     return `${name}.${ext}`;
 }
 
 /**
  * Генерирует уникальный ID для записи в историю.
+ * Используем ЛОКАЛЬНОЕ время (а не UTC через toISOString) — иначе ID отстаёт
+ * от системных часов пользователя и сортировка истории сбивается.
  */
 export function generateFileId(now: Date = new Date()): string {
-    return `cs_${now.toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    return `cs_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}` +
+        `_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`;
 }

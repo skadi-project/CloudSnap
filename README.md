@@ -32,12 +32,18 @@
 - Qwen 3.7 Max Agent - 3кк токенов
 - Qwen 3.7 Plus Agent - 3кк токенов
 - Qwen 3.6 Plus Agent - 3кк токенов
-- Deepseek v4 Pro Agent - 2кк токенов
+- Deepseek v4 Pro Agent - 3кк токенов
 - GLM 5.1 Agent - 3кк токенов
 - Cursor Agent - Free период
 - GitHub Copliot - Free период
 
-Общее затраченное время на текущее состояние проекта: **~30 часов**
+Отладка:
+
+- Claude Code Opus 4.8
+
+- Owl Alpha
+
+Общее затраченное время на текущее состояние проекта: **~40 часов**
 
 ---
 
@@ -162,8 +168,8 @@ make build-mac      # только macOS .zip
 
 | Файл                        | Описание                                     |
 | --------------------------- | -------------------------------------------- |
-| `CloudSnap Setup 1.0.0.exe` | NSIS-инсталлер для Windows                   |
-| `CloudSnap-1.0.0-mac.zip`   | Unsigned .app bundle для macOS (development) |
+| `CloudSnap Setup 1.0.2.exe` | NSIS-инсталлер для Windows                   |
+| `CloudSnap-1.0.2-mac.zip`   | Unsigned .app bundle для macOS (development) |
 
 > **macOS .zip — не production-билд.** Для signed .dmg нужна macOS-машина (см. ниже).
 
@@ -174,12 +180,12 @@ make build-mac      # только macOS .zip
 ### Windows — .exe на Windows-машине
 
 ```bash
-npm install --save-dev @types/node@latest electron-builder@latestnpm && npm run build:win
+npm install --save-dev @types/node@latest electron-builder@latest && npm run build:win
 # или
 make build-local-win
 ```
 
-Результат: `dist/CloudSnap Setup 1.0.0.exe`
+Результат: `dist/CloudSnap Setup 1.0.2.exe`
 
 ### macOS — signed .dmg на Mac-машине
 
@@ -195,7 +201,7 @@ make build-local-mac
 > - `entitlements.mac.plist` в корне проекта (уже есть)
 > - Для code signing: Apple Developer ID + сертификат (опционально)
 
-Результат: `dist/CloudSnap-1.0.0.dmg`
+Результат: `dist/CloudSnap-1.0.2.dmg`
 
 ---
 

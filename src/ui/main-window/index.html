@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -46,6 +46,11 @@
 
         .hidden { display: none !important; }
         .profile-box { background: #fff; padding: 15px; border: 1px solid #e1dfdd; border-radius: 4px; margin-bottom: 15px; }
+        #connectionStatus { font-weight: normal; padding: 2px 8px; border-radius: 3px; display: inline-block; }
+        #connectionStatus.connected { color: #4caf50; }
+        #connectionStatus.disconnected { color: #f44336; }
+        #connectionStatus.reconnecting { color: #ff9800; }
+        #connectionStatus.checking { color: #aaa; }
 
         /* История */
         .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -65,6 +70,20 @@
             width: 100px; height: 70px; object-fit: cover; border-radius: 4px;
             background: #eee; flex-shrink: 0;
         }
+        /* Контейнер для видео-миниатюры: картинка + play-иконка поверх */
+        .history-thumb-video { position: relative; overflow: hidden; }
+        .history-thumb-video img {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .history-thumb-play {
+            position: absolute; left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(0, 0, 0, 0.55); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            pointer-events: none;
+        }
+        .history-thumb-play .icon { width: 14px; height: 14px; margin: 0; }
         .history-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
         .history-filename { font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .history-time { font-size: 11px; color: #999; }
@@ -110,8 +129,9 @@
         .action-copy:hover { background: #005a9e; }
         .action-nc { background: #28a745; }
         .action-nc:hover { background: #1e7e34; }
-        .action-delete { background: transparent; color: #999; border: 1px solid #ccc; }
+        .action-delete { background: transparent; color: #999; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; }
         .action-delete:hover { background: #f44336; color: #fff; border-color: #f44336; }
+        .action-delete .icon { margin-right: 0; }
     </style>
 </head>
 <body>
@@ -145,7 +165,7 @@
             </div>
             <div id="profileView" class="hidden">
                 <div class="profile-box">
-                    <p><strong>Статус:</strong> <span id="connectionStatus" style="color:#4caf50">Подключено к облаку</span></p>
+                    <p><strong>Статус:</strong> <span id="connectionStatus">Подключено к облаку</span></p>
                     <p><strong>Аккаунт:</strong> <span id="activeUser">admin</span></p>
                     <p><strong>Сервер:</strong> <span id="activeServer">localhost</span></p>
                 </div>
@@ -166,20 +186,6 @@
                     <button class="record-btn stop-rec" id="recordStopBtn"><svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Остановить запись</button>
                 </div>
 
-                <div class="profile-box">
-                    <label style="margin-bottom: 10px;"><strong>Режим скриншота:</strong></label>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <label style="font-weight: normal; cursor: pointer;">
-                            <input type="radio" name="screenshotMode" value="screen" checked> Весь экран
-                        </label>
-                        <label style="font-weight: normal; cursor: pointer;">
-                            <input type="radio" name="screenshotMode" value="area"> Выбранная область
-                        </label>
-                        <label style="font-weight: normal; cursor: pointer;">
-                            <input type="radio" name="screenshotMode" value="window"> Окно приложения
-                        </label>
-                    </div>
-                </div>
 
                 <div class="profile-box" style="margin-top: 15px;">
                     <label style="margin-bottom: 10px;"><strong>Параметры приложения:</strong></label>

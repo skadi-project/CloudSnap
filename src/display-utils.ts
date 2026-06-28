@@ -14,6 +14,20 @@ export interface WindowBounds {
     y: number;
     w: number;
     h: number;
+    title?: string; // base64-encoded или plain title, используется для матчинга с desktopCapturer
+    sourceId?: string | null; // desktopCapturer source id для per-window capture
+}
+
+/**
+ * Информация об окне, полученная от desktopCapturer.
+ * sourceId используется для захвата окна через getUserMedia —
+ * это даёт чистое содержимое окна БЕЗ перекрывающих приложений,
+ * в отличие от crop со скриншота экрана.
+ */
+export interface WindowSourceInfo {
+    id: string;
+    name: string; // title окна
+    thumbnail: NativeImage | null;
 }
 
 export interface DisplaySourceInfo {
@@ -134,6 +148,92 @@ export function findDisplayById(displays: DisplaySourceInfo[], displayId: number
 }
 
 /**
+ * Получает список окон через desktopCapturer с types:['window'].
+ * Возвращает sourceId/title — для последующего per-window capture через getUserMedia.
+ * thumbnailSize делаем большим (1920x1080) — desktopCapturer обрежет пропорционально.
+ */
+export async function getWindowSources(): Promise<WindowSourceInfo[]> {
+    try {
+        const sources = await desktopCapturer.getSources({
+            types: ['window'],
+            thumbnailSize: { width: 1920, height: 1080 },
+            fetchWindowIcons: false
+        });
+        return sources.map(s => ({
+            id: s.id,
+            name: s.name || '',
+            thumbnail: s.thumbnail || null
+        }));
+    } catch (e) {
+        console.error('[display-utils] getWindowSources error:', e);
+        return [];
+    }
+}
+
+/**
+ * Нормализует заголовок окна для устойчивого сравнения:
+ *  • trim + collapse внутренних пробелов
+ *  • нижний регистр (PowerShell и desktopCapturer могут отличаться)
+ */
+function normalizeTitle(t: string): string {
+    return (t || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Сопоставляет окна из desktopCapturer с windowBounds (из getWindowBounds).
+ * Стратегии матчинга (по убыванию надёжности):
+ *   1. Точное совпадение нормализованного title
+ *   2. Частичное совпадение title (includes, нормализованное)
+ *
+ * Каждый sourceId используется не более одного раза — чтобы одно и то же окно
+ * из desktopCapturer не подбиралось к двум разным bounds.
+ *
+ * Раньше использовался сырой title.includes() с учётом регистра, и на ПЕРВОМ
+ * снимке после старта приложения часто проваливалось: desktopCapturer ещё не
+ * перечислил заголовки и/или вернул их в кодировке, не совпадающей с PowerShell.
+ * В результате hoveredWindow.sourceId = null → код в capture.html падал в
+ * fallback (crop с экрана) и в снимок попадало приложение, лежащее поверх
+ * целевого окна. Со второго снимка источники уже прогреты — баг не
+ * воспроизводился.
+ *
+ * Обогащает windowBounds полем sourceId для последующего per-window capture.
+ */
+export function matchWindowSourcesToBounds(
+    windowBounds: WindowBounds[],
+    windowSources: WindowSourceInfo[]
+): WindowBounds[] {
+    if (!windowSources.length) {
+        return windowBounds.map(b => ({ ...b, sourceId: null }));
+    }
+    // Готовим нормализованный список источников, отсортированный по длине
+    // нормализованного title (более длинные — более специфичные, чтобы
+    // exact-match срабатывал раньше, чем contains-match на подстроке).
+    const normalizedSources = windowSources
+        .map(s => ({ ...s, norm: normalizeTitle(s.name) }))
+        .sort((a, b) => b.norm.length - a.norm.length);
+
+    const usedSourceIds = new Set<string>();
+
+    return windowBounds.map(b => {
+        const title = normalizeTitle(b.title || '');
+        let match: WindowSourceInfo | null = null;
+        if (title) {
+            // 1. Точное совпадение (нормализованное)
+            match = normalizedSources.find(s => !usedSourceIds.has(s.id) && s.norm === title) || null;
+            // 2. Частичное совпадение (нормализованное)
+            if (!match) {
+                match = normalizedSources.find(s =>
+                    !usedSourceIds.has(s.id) && s.norm &&
+                    (s.norm.includes(title) || title.includes(s.norm))
+                ) || null;
+            }
+        }
+        if (match) usedSourceIds.add(match.id);
+        return { ...b, sourceId: match ? match.id : null };
+    });
+}
+
+/**
  * Клиппирует координаты окон под конкретный монитор и переводит в thumbnail-пиксели.
  *
  * Windows: SetProcessDPIAware() возвращает физические (DPI-unadjusted) координаты,
@@ -199,7 +299,10 @@ export function filterWindowBoundsForDisplay(
                     x: cx - clipX,
                     y: cy - clipY,
                     w: cr - cx,
-                    h: cb - cy
+                    h: cb - cy,
+                    // Сохраняем sourceId/title — нужны для per-window capture
+                    sourceId: win.sourceId,
+                    title: win.title
                 };
             })
             .filter(win => win.w > 50 && win.h > 50);
@@ -228,7 +331,9 @@ export function filterWindowBoundsForDisplay(
                 x: cx - dx,
                 y: cy - dy,
                 w: cr - cx,
-                h: cb - cy
+                h: cb - cy,
+                sourceId: win.sourceId,
+                title: win.title
             };
         })
         .filter(win => win.w > 50 && win.h > 50)
@@ -236,7 +341,9 @@ export function filterWindowBoundsForDisplay(
             x: Math.round(win.x * sf),
             y: Math.round(win.y * sf),
             w: Math.round(win.w * sf),
-            h: Math.round(win.h * sf)
+            h: Math.round(win.h * sf),
+            sourceId: win.sourceId,
+            title: win.title
         }));
 
     if (result.length) {

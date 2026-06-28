@@ -11,7 +11,8 @@ import {
     Notification,
     shell,
     nativeImage,
-    dialog
+    dialog,
+    screen
 } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -23,7 +24,9 @@ import {
     getDisplayByCursor,
     findDisplayById,
     buildCapturePayload,
-    buildPickerPayload
+    buildPickerPayload,
+    getWindowSources,
+    matchWindowSourcesToBounds
 } from './src/display-utils';
 import { DEFAULT_TEMPLATE, generateFilename, generateFileId } from './src/filename-utils';
 import { RecordingManager } from './src/recording-manager';
@@ -54,6 +57,8 @@ interface WindowBoundsData {
     y: number;
     w: number;
     h: number;
+    title?: string; // base64-encoded для безопасного парсинга
+    sourceId?: string | null; // desktopCapturer sourceId для per-window capture
 }
 
 const isMac = process.platform === 'darwin';
@@ -71,13 +76,31 @@ let captureWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isProcessingQueue = false;
 const MAX_HISTORY = 50;
+// Per-session буфер chunks для текущей записи. Сбрасывается в onBeforeStart.
+// Это устраняет race condition, когда последние chunks от MediaRecorder приходят
+// уже после stop() и попадают в следующую запись.
 let recordingChunks: Buffer[] = [];
+let recordingSessionId: string | null = null;
 let quitAfterRecording = false;
 let monitorPickerWindow: BrowserWindow | null = null;
 let monitorPickerMode: string | null = null;
 let monitorPickerResolve: ((value: any) => void) | null = null;
 let cachedDisplaySources: any[] = [];
 let captureDisplayId: string | number | null = null;
+// Timestamp начала записи (используется для измерения общей задержки в npm-логе)
+let recordingT0: number = 0;
+// Timestamp начала снимка (для логов задержки скриншота)
+let screenshotT0: number = 0;
+// JPEG base64 последнего кадра — отправляется recorder'ом ДО recording-finished,
+// чтобы main сохранил миниатюру в историю до сборки финального видео.
+let pendingThumbnail: string | null = null;
+
+// === Кеш desktopCapturer.getSources() ===
+// Главное узкое место: getSources() занимает 50-200ms. Кешируем с TTL 5с,
+// инвалидируем на изменения дисплеев. Прогреваем при старте.
+const DISPLAY_CACHE_TTL_MS = 5000;
+let displayCache: { sources: any[]; at: number } | null = null;
+let displayCachePending: Promise<any[]> | null = null;
 
 // === Connection Monitor ===
 const RECONNECT_INTERVALS = [5, 15, 30, 60];
@@ -215,6 +238,64 @@ function generateThumbnail(buffer: Buffer, id: string): string {
     return thumbPath;
 }
 
+// Зеркало generateThumbnail для видео: recorder присылает JPEG base64 последнего
+// кадра из cropCanvas. Декодируем через nativeImage, ресайзим до 150px и
+// сохраняем в ту же historyDir с тем же шаблоном имени — UI истории один и тот же.
+function generateVideoThumbnail(base64: string, id: string): string | null {
+    try {
+        const buf = Buffer.from(base64, 'base64');
+        const img = nativeImage.createFromBuffer(buf);
+        const resized = img.resize({ width: 150 });
+        const jpegBuf = resized.toJPEG(60);
+        const thumbPath = path.join(getHistoryDir(), `${id}_thumb.jpg`);
+        fs.writeFileSync(thumbPath, jpegBuf);
+        return thumbPath;
+    } catch (e) {
+        console.warn('generateVideoThumbnail failed:', e);
+        return null;
+    }
+}
+
+// Вызывает SHChangeNotify через PowerShell. На Windows Explorer читает
+// миниатюры из in-memory кеша и не обновляет их по изменению файла, поэтому
+// без явного уведомления старая иконка держится до F5 или перезапуска.
+//   SHCNE_UPDATEITEM = 0x00000000 — обновить элемент
+//   SHCNF_PATH       = 0x00000005 — путь в wchar*
+// Дополнительно дёргаем SHCNE_ASSOCCHANGED, чтобы иконка пересобралась, если
+// система успела закешировать старую.
+function notifyExplorer(filePath: string): void {
+    if (process.platform !== 'win32') return;
+    try {
+        // PS-скрипт делает Add-Type + SHChangeNotify. Через PS — самый простой
+        // путь вызвать нативный API без отдельного нативного модуля в Electron.
+        execFileSync('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `$path = ${JSON.stringify(filePath)}; ` +
+            `$signature = @"
+using System;
+using System.Runtime.InteropServices;
+public class WinShell {
+    [DllImport(\"shell32.dll\", CharSet=CharSet.Unicode)]
+    public static extern void SHChangeNotify(int wEventId, int uFlags, IntPtr dwItem1, IntPtr dwItem2);
+}
+"@; ` +
+            `Add-Type -TypeDefinition $signature; ` +
+            // SHCNE_UPDATEITEM = 0, SHCNF_PATH = 5: один конкретный файл
+            `$p = [System.Runtime.InteropServices.Marshal]::StringToHGlobalUni($path); ` +
+            `try { [WinShell]::SHChangeNotify(0, 5, $p, [IntPtr]::Zero) } ` +
+            `finally { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($p) }; ` +
+            // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0x1000: глобальный rebuild
+            `[WinShell]::SHChangeNotify(0x08000000, 0x00001000, [IntPtr]::Zero, [IntPtr]::Zero)`
+        ], { stdio: 'ignore', timeout: 5000 });
+    } catch (e) {
+        // Не критично — Explorer обновит иконку при следующем F5
+        console.warn('[main] notifyExplorer failed:', e instanceof Error ? e.message : e);
+    }
+}
+
+
 function addToHistory(entry: HistoryEntry): void {
     const history = store.get('screenshotHistory', []) as HistoryEntry[];
     history.unshift(entry);
@@ -246,6 +327,9 @@ function getWindowBounds(): WindowBoundsData[] {
     }
     if (process.platform !== 'win32') return [];
     try {
+        // PowerShell-скрипт: возвращает окна в формате "x,y,w,h,<titleBase64>"
+        // разделены "|". Title кодируется в base64 чтобы избежать проблем с
+        // разделителями и спецсимволами в заголовках окон.
         const script = `
 Add-Type -TypeDefinition '
 using System; using System.Runtime.InteropServices; using System.Text; using System.Collections.Generic;
@@ -269,7 +353,9 @@ public class WinBounds {
                 if (dwmResult != 0) GetWindowRect(hWnd, out r);
                 int w = r.Right - r.Left; int h = r.Bottom - r.Top;
                 if (w > 100 && h > 100 && r.Right > 0 && r.Bottom > 0) {
-                    list.Add(r.Left + "," + r.Top + "," + w + "," + h);
+                    var titleBytes = Encoding.UTF8.GetBytes(sb.ToString());
+                    var titleB64 = Convert.ToBase64String(titleBytes);
+                    list.Add(r.Left + "," + r.Top + "," + w + "," + h + "," + titleB64);
                 }
             }
             return true;
@@ -282,10 +368,24 @@ public class WinBounds {
         const output = stdout.trim();
         if (!output) return [];
 
-        return output.split('|').map(line => {
-            const [x, y, w, h] = line.split(',').map(Number);
-            return { x, y, w, h };
-        });
+        return output.split('|').map((line): WindowBoundsData | null => {
+            const parts = line.split(',');
+            if (parts.length < 5) return null;
+            const x = Number(parts[0]);
+            const y = Number(parts[1]);
+            const w = Number(parts[2]);
+            const h = Number(parts[3]);
+            if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return null;
+            // title — всё после 4-й запятой, в base64
+            const titleB64 = parts.slice(4).join(',');
+            let title = '';
+            try {
+                title = Buffer.from(titleB64, 'base64').toString('utf8');
+            } catch (e) {
+                title = '';
+            }
+            return { x, y, w, h, title };
+        }).filter((item): item is WindowBoundsData => item !== null);
     } catch (e) {
         console.error("Ошибка получения границ окон через PowerShell:", e);
         return [];
@@ -391,8 +491,36 @@ function showMonitorPicker(mode: string): Promise<any> {
     });
 }
 
+async function getDisplaySourcesCached(): Promise<any[]> {
+    const now = Date.now();
+    if (displayCache && (now - displayCache.at) < DISPLAY_CACHE_TTL_MS) {
+        return displayCache.sources;
+    }
+    // Coalesce параллельные вызовы в одну фактическую загрузку
+    if (displayCachePending) return displayCachePending;
+    displayCachePending = getDisplaySources()
+        .then(sources => {
+            displayCache = { sources, at: Date.now() };
+            cachedDisplaySources = sources;
+            return sources;
+        })
+        .catch(err => {
+            console.error('getDisplaySources error:', err);
+            return cachedDisplaySources;
+        })
+        .finally(() => {
+            displayCachePending = null;
+        });
+    return displayCachePending;
+}
+
+function invalidateDisplayCache(): void {
+    displayCache = null;
+    cachedDisplaySources = [];
+}
+
 async function resolveTargetDisplay(preferredDisplayId: string | number | null = null): Promise<any> {
-    cachedDisplaySources = await getDisplaySources();
+    cachedDisplaySources = await getDisplaySourcesCached();
     if (!cachedDisplaySources.length) {
         console.error('Источники экрана не найдены');
         return null;
@@ -408,7 +536,9 @@ async function resolveTargetDisplay(preferredDisplayId: string | number | null =
 }
 
 async function pickDisplay(mode: string, preferredDisplayId: string | number | null = null): Promise<any> {
-    cachedDisplaySources = await getDisplaySources();
+    // Используем тот же кеш, что и resolveTargetDisplay. Это устраняет
+    // повторный дорогой вызов desktopCapturer.getSources().
+    cachedDisplaySources = await getDisplaySourcesCached();
     if (!cachedDisplaySources.length) return null;
     if (cachedDisplaySources.length === 1) return cachedDisplaySources[0];
 
@@ -440,12 +570,31 @@ async function openCaptureOnDisplay(displayInfo: any): Promise<void> {
     const screenImageSrc = displayInfo.thumbnail.toDataURL();
     captureDisplayId = displayInfo.id;
 
-    const payload = buildCapturePayload(displayInfo, screenImageSrc, currentMode, getWindowBounds()) as any;    // const payload = buildCapturePayload(
-    //     displayInfo,
-    //     screenImageSrc,
-    //     currentMode,
-    //     getWindowBounds()
-    // );
+    let windowBounds = getWindowBounds();
+
+    // В режиме 'window' получаем window sources из desktopCapturer и матчим
+    // с bounds. Это позволяет делать per-window capture через getUserMedia —
+    // чистое содержимое окна БЕЗ перекрывающих приложений.
+    if (currentMode === 'window') {
+        try {
+            let windowSources = await getWindowSources();
+            windowBounds = matchWindowSourcesToBounds(windowBounds, windowSources);
+            const matchedCount = windowBounds.filter(b => b.sourceId).length;
+            console.log(`[capture] Window mode: ${windowBounds.length} bounds, ${windowSources.length} sources, ${matchedCount} matched`);
+            // Retry once if no windows matched — desktopCapturer may still be enumerating
+            if (matchedCount === 0 && windowBounds.length > 0 && windowSources.length > 0) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                windowSources = await getWindowSources();
+                windowBounds = matchWindowSourcesToBounds(windowBounds, windowSources);
+                const retryCount = windowBounds.filter(b => b.sourceId).length;
+                console.log(`[capture] Window mode retry: ${retryCount} matched`);
+            }
+        } catch (e) {
+            console.error('[capture] getWindowSources failed:', e);
+        }
+    }
+
+    const payload = buildCapturePayload(displayInfo, screenImageSrc, currentMode, windowBounds) as any;
     payload.displays = cachedDisplaySources.map(d => ({
         id: d.id,
         label: d.label,
@@ -472,6 +621,8 @@ async function openCaptureOnDisplay(displayInfo: any): Promise<void> {
         backgroundColor: '#00000000',
         alwaysOnTop: true,
         skipTaskbar: true,
+        show: false, // Не показываем окно до полной готовности
+        paintWhenInitiallyHidden: true, // Рендерим в фоне, чтобы избежать flicker
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -480,12 +631,17 @@ async function openCaptureOnDisplay(displayInfo: any): Promise<void> {
     });
 
     captureWindow.loadFile(path.join(__dirname, 'src/ui/capture-window/capture.html'));
-    // captureWindow.loadFile(path.join(__dirname, 'src/ui/capture-window/capture.html'));
 
-    captureWindow.webContents.once('did-finish-load', () =>{
+    captureWindow.webContents.once('did-finish-load', () => {
+        if (screenshotT0) console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  captureWindow did-finish-load → sending screenshot-captured`);
         if (screenImageSrc.startsWith('data:image')) {
             captureWindow?.webContents.send('screenshot-captured', payload);
-            // captureWindow?.webContents.send('screenshot-captured', payload);
+        }
+        // Показываем окно только после того, как renderer получил payload.
+        // Устраняет flash пустого прозрачного окна.
+        if (captureWindow && !captureWindow.isDestroyed()) {
+            captureWindow.show();
+            if (screenshotT0) console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  captureWindow shown (visible to user)`);
         }
     });
 
@@ -500,7 +656,11 @@ async function createCaptureWindow(preferredDisplayId: string | number | null = 
 
     try {
         const displayInfo = await resolveTargetDisplay(preferredDisplayId);
-        if (!displayInfo) return;
+        if (!displayInfo) {
+            console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  resolveTargetDisplay returned null`);
+            return;
+        }
+        console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  display resolved: id=${displayInfo.id} label="${displayInfo.label}"`);
         await openCaptureOnDisplay(displayInfo);
     } catch (e) {
         console.error('Критическая ошибка desktopCapturer в главном процессе:', e);
@@ -508,11 +668,13 @@ async function createCaptureWindow(preferredDisplayId: string | number | null = 
 }
 
 async function createCaptureWindowWithDelay(delaySeconds: number): Promise<void> {
+    screenshotT0 = Date.now();
+    console.log(`[latency][shot] t=0ms  createCaptureWindowWithDelay delay=${delaySeconds}s`);
     if (mainWindow && mainWindow.isVisible()) {
         mainWindow.hide();
     }
     if (delaySeconds > 0) {
-        new Notification({ 
+        new Notification({
             title: 'CloudSnap',
             body: `Приготовиться! Снимок экрана через ${delaySeconds} сек...`
         }).show();
@@ -602,8 +764,15 @@ async function processQueue(): Promise<void> {
 
 async function startRecordingFromTray(mode: 'fullscreen' | 'area'): Promise<void> {
     const pickerMode = mode === 'area' ? 'record-area' : 'record-fullscreen';
+    recordingT0 = Date.now();
+    (globalThis as any)._recordingT0 = recordingT0;
+    console.log(`[latency] t=0ms  startRecordingFromTray mode=${mode}`);
     const displayInfo = await pickDisplay(pickerMode);
-    if (!displayInfo) return;
+    if (!displayInfo) {
+        console.log('[latency] pickDisplay cancelled');
+        return;
+    }
+    console.log(`[latency] t=${Date.now() - recordingT0}ms  display picked: id=${displayInfo.id} label="${displayInfo.label}"`);
     if (mode === 'area') {
         await recordingManager.startAreaSelection(displayInfo);
     } else {
@@ -742,6 +911,9 @@ function registerShortcuts(): void {
     const defaultDelay = store.get('defaultDelay', 0) as number;
 
     globalShortcut.register(screenshotShortcut, () => {
+        if ((app as any).isQuitting) return;
+        screenshotT0 = Date.now();
+        console.log(`[latency][shot] t=0ms  HOTKEY ${screenshotShortcut} (defaultDelay=${defaultDelay}s)`);
         if (defaultDelay > 0) {
             createCaptureWindowWithDelay(defaultDelay);
         } else {
@@ -754,10 +926,17 @@ function registerShortcuts(): void {
     const recordShortcut = `${recModifier}+${recKey}`;
 
     globalShortcut.register(recordShortcut, async () => {
+        if ((app as any).isQuitting) return;
+        recordingT0 = Date.now();
+        (globalThis as any)._recordingT0 = recordingT0;
+        console.log(`[latency] t=0ms  HOTKEY ${recordShortcut} → fullscreen recording`);
         const recState = recordingManager.getState();
         if (recState === 'idle') {
             const displayInfo = await resolveTargetDisplay();
-            if (displayInfo) await recordingManager.startFullscreen(displayInfo);
+            if (displayInfo) {
+                console.log(`[latency] t=${Date.now() - recordingT0}ms  display resolved`);
+                await recordingManager.startFullscreen(displayInfo);
+            }
         } else if (recState === 'recording') {
             recordingManager.pause();
         } else if (recState === 'paused') {
@@ -770,6 +949,7 @@ function registerShortcuts(): void {
     const stopShortcut = `${stopModifier}+${stopKey}`;
 
     globalShortcut.register(stopShortcut, () => {
+        if ((app as any).isQuitting) return;
         const recState = recordingManager.getState();
         if (recState === 'recording' || recState === 'paused') {
             recordingManager.stop();
@@ -787,6 +967,8 @@ ipcMain.handle('save-app-settings', async (event, settings: any) => {
         store.set('startMinimized', settings.startMinimized || false);
         store.set('saveLocalCopy', settings.saveLocalCopy || false);
         store.set('videoBitrate', settings.videoBitrate || 2500000);
+        console.log('[bitrate] save-app-settings → store.videoBitrate =', store.get('videoBitrate'),
+            `(${((store.get('videoBitrate') as number) / 1_000_000).toFixed(2)} Мбит/с)`);
         store.set('recordAudio', settings.recordAudio !== undefined ? settings.recordAudio : true);
         store.set('filenameTemplate', settings.filenameTemplate || DEFAULT_TEMPLATE);
         
@@ -987,7 +1169,32 @@ app.whenReady().then(async () => {
         recordingManager.setMainWindow(mainWindow);
     }
     recordingManager.setGetWindowBounds(getWindowBounds);
-    recordingManager.setOnBeforeStart(() => { recordingChunks = []; });
+    recordingManager.setOnBeforeStart(() => {
+        // Сбрасываем буфер и выдаём новый sessionId для защиты от race
+        recordingChunks = [];
+        const newSessionId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        recordingSessionId = newSessionId;
+        return newSessionId;
+    });
+
+    // Инвалидируем кеш дисплеев при изменениях.
+    // screen.on() — это валидный API Electron, но @types/node не типизирует его
+    // для EventEmitter-стиля; используем (screen as any).
+    (screen as any).on?.('display-added', invalidateDisplayCache);
+    (screen as any).on?.('display-removed', invalidateDisplayCache);
+    (screen as any).on?.('display-metrics-changed', invalidateDisplayCache);
+
+    // Прогрев кеша в фоне через 1с после старта
+    setTimeout(() => { getDisplaySourcesCached().catch(() => {}); }, 1000);
+
+    // Прогрев desktopCapturer.getSources({ types: ['window'] }) — на ПЕРВОМ
+    // вызове после старта Chromium-часть ещё не закончила enumeration окон,
+    // и matching с PowerShell по title даёт пустые/частичные результаты.
+    // Проявляется как «первый снимок в режиме окна содержит приложение
+    // поверх целевого окна». Делаем «холостые» вызовы, чтобы к моменту
+    // хоткея desktopCapturer был полностью прогрет.
+    setTimeout(() => { getWindowSources().catch(() => {}); }, 1500);
+    setTimeout(() => { getWindowSources().catch(() => {}); }, 4000);
 
     processQueue();
 
@@ -1072,8 +1279,11 @@ ipcMain.handle('upload-file', async (event, { fileData, type, monitorIndex }: { 
     const buffer = Buffer.from(fileData, 'base64');
     const thumbnailPath = generateThumbnail(buffer, id);
 
+    if (screenshotT0 && type === 'image') console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  upload-file received from renderer (type=${type}, size=${buffer.length}B)`);
+
     const targetUrl = getTargetUploadUrl(url);
     const result = await uploadToNextcloud(targetUrl, login, password, filename, buffer);
+    if (screenshotT0 && type === 'image') console.log(`[latency][shot] t=${Date.now() - screenshotT0}ms  upload finished: success=${result.success}`);
     if (result.success && mainWindow) {
         const linkMode = store.get('linkMode', 'internal') as string;
         let finalLink: string | null = result.url || null;
@@ -1165,33 +1375,9 @@ ipcMain.handle('open-screenshots-folder', async () => {
     return { success: true };
 });
 
-ipcMain.on('monitor-selected', (event, displayId: any) => {
-    if (monitorPickerWindow) {
-        monitorPickerWindow.close();
-        monitorPickerWindow = null;
-    }
-    if (monitorPickerResolve) {
-        const cb = monitorPickerResolve;
-        monitorPickerResolve = null;
-        cb(displayId);
-    }
-});
-
-ipcMain.on('monitor-picker-cancelled', () => {
-    if (monitorPickerWindow) {
-        monitorPickerWindow.close();
-        monitorPickerWindow = null;
-    }
-    if (monitorPickerResolve) {
-        const cb = monitorPickerResolve;
-        monitorPickerResolve = null;
-        cb(null);
-    }
-});
-
 ipcMain.handle('switch-capture-display', async (event, displayId: any) => {
     try {
-        cachedDisplaySources = await getDisplaySources();
+        cachedDisplaySources = await getDisplaySourcesCached();
         const displayInfo = findDisplayById(cachedDisplaySources, displayId);
         if (!displayInfo || !displayInfo.thumbnail) {
             return { success: false, error: 'Монитор не найден' };
@@ -1253,7 +1439,13 @@ ipcMain.handle('clear-history', async () => {
 
 // === Запись видео: IPC-обработчики ===
 
-ipcMain.on('recording-chunk', (event, data: any) => {
+ipcMain.on('recording-chunk', (event, data: any, sessionId?: string) => {
+    // Защита от race condition: отбрасываем chunks от предыдущей записи,
+    // которые могут прийти уже после stop(). Если sessionId не совпадает
+    // с текущим — это устаревший chunk.
+    if (sessionId && recordingSessionId && sessionId !== recordingSessionId) {
+        return;
+    }
     recordingChunks.push(Buffer.from(data));
 });
 
@@ -1261,7 +1453,23 @@ ipcMain.on('recording-finished', async () => {
     await processRecordingData();
 });
 
+ipcMain.on('recording-first-frame', (event, firstFrameTs: number) => {
+    const totalMs = Date.now() - recordingT0;
+    const rendererMs = firstFrameTs - recordingT0;
+    console.log(`[latency] t=${totalMs}ms  FIRST FRAME drawn in renderer (renderer delta=${rendererMs}ms)`);
+    console.log(`[latency] ===> TOTAL latency (hotkey → first frame): ${totalMs}ms`);
+});
+
+ipcMain.on('recording-thumbnail', (event, base64: string) => {
+    // Recorder присылает JPEG base64 последнего отрисованного кадра cropCanvas.
+    // Привязываем к текущей сессии — pendingThumbnail сбрасывается в processRecordingData.
+    pendingThumbnail = base64;
+    console.log(`[main] recording-thumbnail received: ${base64.length} chars`);
+});
+
 ipcMain.on('area-selected', (event, area: any) => {
+    console.log(`[latency] t=${Date.now() - recordingT0}ms  area-selected received from selector`,
+        JSON.stringify({x: area.x, y: area.y, w: area.w, h: area.h, sf: area.scaleFactor}));
     recordingManager.confirmArea(area);
 });
 
@@ -1270,15 +1478,23 @@ ipcMain.on('area-selection-cancelled', () => {
 });
 
 ipcMain.handle('start-video-recording', async () => {
+    recordingT0 = Date.now();
+    (globalThis as any)._recordingT0 = recordingT0;
+    console.log(`[latency] t=0ms  start-video-recording (UI)`);
     const displayInfo = await pickDisplay('record-fullscreen');
     if (!displayInfo) return { success: false, cancelled: true };
+    console.log(`[latency] t=${Date.now() - recordingT0}ms  display picked`);
     await recordingManager.startFullscreen(displayInfo);
     return { success: true };
 });
 
 ipcMain.handle('start-area-recording', async () => {
+    recordingT0 = Date.now();
+    (globalThis as any)._recordingT0 = recordingT0;
+    console.log(`[latency] t=0ms  start-area-recording (UI)`);
     const displayInfo = await pickDisplay('record-area');
     if (!displayInfo) return { success: false, cancelled: true };
+    console.log(`[latency] t=${Date.now() - recordingT0}ms  display picked`);
     await recordingManager.startAreaSelection(displayInfo);
     return { success: true };
 });
@@ -1307,6 +1523,7 @@ async function processRecordingData(): Promise<void> {
 
     const finalBuffer = Buffer.concat(recordingChunks);
     recordingChunks = [];
+    recordingSessionId = null;
 
     const now = new Date();
     const filename = buildFilename('video', recordingManager.getActiveDisplayIndex());
@@ -1315,13 +1532,14 @@ async function processRecordingData(): Promise<void> {
     const tempDir = path.join(app.getPath('userData'), 'temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
     const tempPath = path.join(tempDir, filename);
-    fs.writeFileSync(tempPath, finalBuffer);
+    // Для больших файлов пишем через stream, чтобы не забивать память
+    await writeBufferToFile(tempPath, finalBuffer);
 
     const saveLocalCopy = store.get('saveLocalCopy', false);
     let localPath: string | null = null;
     if (saveLocalCopy) {
         localPath = path.join(getScreenshotsDir(), filename);
-        fs.copyFileSync(tempPath, localPath);
+        await writeBufferToFile(localPath, finalBuffer);
     }
 
     const url = store.get('url', '') as string;
@@ -1339,32 +1557,21 @@ async function processRecordingData(): Promise<void> {
 
             if (result.success) {
                 uploadStatus = 'uploaded';
-                finalLink = result.url || null; // Превращаем undefined в null
+                finalLink = result.url || null;
                 filePath = result.filePath || '';
                 const linkMode = store.get('linkMode', 'internal');
                 if (linkMode === 'public' && filePath) {
                     const shareResult = await createPublicShare(url, login, password, filePath);
                     if (shareResult.success) {
                         finalLink = shareResult.url || null;
-                    }    
-                    clipboard.writeText(finalLink || '');}
+                    }
+                    clipboard.writeText(finalLink || '');
+                }
             } else {
-            // if (result.success) {
-            //     uploadStatus = 'uploaded';
-            //     finalLink = result.url;
-            //     filePath = result.filePath || '';
-
-            //     const linkMode = store.get('linkMode', 'internal') as string;
-            //     if (linkMode === 'public' && filePath) {
-            //         const shareResult = await createPublicShare(url, login, password, filePath);
-            //         if (shareResult.success) finalLink = shareResult.url;
-            //     }
-            //     clipboard.writeText(finalLink);
-            // } else {
                 const cacheDir = path.join(app.getPath('userData'), 'pending-uploads');
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
                 const queuePath = path.join(cacheDir, filename);
-                fs.writeFileSync(queuePath, finalBuffer);
+                await writeBufferToFile(queuePath, finalBuffer);
                 const queue = store.get('uploadQueue', []) as QueueItem[];
                 queue.push({ filename, localPath: queuePath, id });
                 store.set('uploadQueue', queue);
@@ -1374,18 +1581,39 @@ async function processRecordingData(): Promise<void> {
             const cacheDir = path.join(app.getPath('userData'), 'pending-uploads');
             if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
             const queuePath = path.join(cacheDir, filename);
-            fs.writeFileSync(queuePath, finalBuffer);
+            await writeBufferToFile(queuePath, finalBuffer);
             const queue = store.get('uploadQueue', []) as QueueItem[];
             queue.push({ filename, localPath: queuePath, id });
             store.set('uploadQueue', queue);
         }
     }
 
+    // === Refresh иконки в Проводнике Windows ===
+    // Embedded cover art внутри MP4 уже записан mediabunny на стороне recorder'а.
+    // Explorer читает его из кеша иконок и не обновляет по факту изменения
+    // файла, поэтому без явного уведомления старая заглушка держится до F5.
+    // Дёргаем SHChangeNotify для каждой копии .mp4 (локальная и в очереди).
+    if (process.platform === 'win32') {
+        if (localPath) notifyExplorer(localPath);
+        const queueItem = (store.get('uploadQueue', []) as QueueItem[])
+            .find(q => q.id === id);
+        if (queueItem && queueItem.localPath && queueItem.localPath !== localPath) {
+            notifyExplorer(queueItem.localPath);
+        }
+    }
+
+    // Миниатюра пришла от recorder'а ПЕРЕД recording-finished, используем её
+    // (по аналогии с generateThumbnail для скриншотов).
+    const thumbnailPath = pendingThumbnail
+        ? generateVideoThumbnail(pendingThumbnail, id)
+        : null;
+    pendingThumbnail = null; // сбрасываем для следующей записи
+
     addToHistory({
         id, filename, type: 'video',
         timestamp: now.toISOString(),
         status: uploadStatus,
-        thumbnailPath: null,
+        thumbnailPath,
         finalLink,
         filePath,
         serverUrl: url,
@@ -1393,7 +1621,11 @@ async function processRecordingData(): Promise<void> {
         localPath
     });
 
-    try { fs.unlinkSync(tempPath); } catch {}
+    try {
+        fs.unlinkSync(tempPath);
+    } catch (e: any) {
+        console.warn(`Не удалось удалить temp файл ${tempPath}: ${e?.message}`);
+    }
 
     if (uploadStatus === 'uploaded') {
         new Notification({ title: 'CloudSnap: Видео сохранено', body: `Ссылка скопирована в буфер обмена` }).show();
@@ -1410,6 +1642,44 @@ async function processRecordingData(): Promise<void> {
         (app as any).isQuitting = true;
         app.quit();
     }
+}
+
+/**
+ * Записывает Buffer в файл. Для файлов > 50 МБ использует stream,
+ * чтобы не забивать память и не получать RangeError на больших аллокациях.
+ */
+function writeBufferToFile(filePath: string, buffer: Buffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (buffer.length < 50 * 1024 * 1024) {
+            try {
+                fs.writeFileSync(filePath, buffer);
+                resolve();
+            } catch (e) {
+                reject(e);
+            }
+            return;
+        }
+        const stream = fs.createWriteStream(filePath);
+        stream.on('error', reject);
+        stream.on('finish', resolve);
+        // Пишем чанками по 4 МБ
+        const CHUNK = 4 * 1024 * 1024;
+        let offset = 0;
+        const writeNext = () => {
+            if (offset >= buffer.length) {
+                stream.end();
+                return;
+            }
+            const slice = buffer.subarray(offset, Math.min(offset + CHUNK, buffer.length));
+            offset += slice.length;
+            if (!stream.write(slice)) {
+                stream.once('drain', writeNext);
+            } else {
+                setImmediate(writeNext);
+            }
+        };
+        writeNext();
+    });
 }
 
 function getTargetUploadUrl(baseUrl: string): string {

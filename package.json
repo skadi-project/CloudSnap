@@ -1,6 +1,6 @@
 {
   "name": "Cloud-snap",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Скриншотер и запись экрана для Nextcloud",
   "main": "main.js",
   "scripts": {
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
+    "mediabunny": "^1.0.0",
     "webdav": "^4.11.3"
   },
   "devDependencies": {

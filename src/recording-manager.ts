@@ -55,9 +55,10 @@ export class RecordingManager {
     private tray: Tray | null = null;
     private store: AppStore | null = null;
     private mainWindow: BrowserWindow | null = null;
-    
+    private currentSessionId: string | null = null;
+
     private onStateChange: ((state: RecordingState) => void) | null = null;
-    private onBeforeStart?: () => void;
+    private onBeforeStart?: () => string;
     private getWindowBounds: (() => any[]) | null = null;
 
     constructor(onStateChange?: (state: RecordingState) => void) {
@@ -67,8 +68,14 @@ export class RecordingManager {
     setTray(tray: Tray): void { this.tray = tray; }
     setStore(store: AppStore): void { this.store = store; }
     setMainWindow(win: BrowserWindow): void { this.mainWindow = win; }
-    setOnBeforeStart(cb: () => void): void { this.onBeforeStart = cb; }
+    /**
+     * Регистрирует callback, вызываемый перед стартом записи.
+     * Callback может вернуть sessionId — он будет передан в renderer
+     * для защиты от race condition с устаревшими chunks.
+     */
+    setOnBeforeStart(cb: () => string): void { this.onBeforeStart = cb; }
     setGetWindowBounds(fn: () => any[]): void { this.getWindowBounds = fn; }
+    getCurrentSessionId(): string | null { return this.currentSessionId; }
 
     getState(): RecordingState { return this.state; }
 
@@ -119,6 +126,7 @@ export class RecordingManager {
 
         this.activeDisplay = displayInfo;
         this.state = 'selecting';
+        console.log(`[latency] t=${Date.now() - ((globalThis as any)._recordingT0 || Date.now())}ms  startAreaSelection — opening selector window`);
         this._notify();
 
         try {
@@ -182,6 +190,7 @@ export class RecordingManager {
 
         try {
             const display = this.activeDisplay;
+            console.log(`[latency] t=${Date.now() - ((globalThis as any)._recordingT0 || Date.now())}ms  confirmArea:`, JSON.stringify({x: area.x, y: area.y, w: area.w, h: area.h}));
             // Используем scaleFactor из renderer — он соответствует реальному
             // масштабу thumbnail, а не абстрактному display.scaleFactor
             const sf = (area as any).scaleFactor || display.scaleFactor || 1;
@@ -219,14 +228,17 @@ export class RecordingManager {
     }
 
     private async _createRecorderAndOverlay(sourceId: string): Promise<void> {
-        if (this.onBeforeStart) this.onBeforeStart();
-        this.state = 'recording';
+        const tRecMgr = Date.now();
+        if (this.onBeforeStart) this.currentSessionId = this.onBeforeStart();
         this.startTime = Date.now();
         this.pausedDuration = 0;
         this.pauseStartTime = null;
+        console.log(`[latency] t=${tRecMgr - (global as any)._recordingT0 || 0}ms  _createRecorderAndOverlay start, recordingArea=${this.recordingArea ? JSON.stringify({x: this.recordingArea.x, y: this.recordingArea.y, w: this.recordingArea.w, h: this.recordingArea.h}) : 'null (fullscreen)'}`);
 
         const bitrate = this.store ? this.store.get('videoBitrate', 2500000) : 2500000;
         const recordAudio = this.store ? this.store.get('recordAudio', true) : true;
+        console.log('[bitrate] _createRecorderAndOverlay → store.videoBitrate =', bitrate,
+            `(${(bitrate / 1_000_000).toFixed(2)} Мбит/с)`, 'audio=', recordAudio);
 
         this.recorderWindow = new BrowserWindow({
             show: false,
@@ -240,14 +252,25 @@ export class RecordingManager {
         this.recorderWindow.loadFile(path.join(__dirname, 'ui', 'recorder-window', 'recorder.html'));
         this.recorderWindow.webContents.setBackgroundThrottling(false);
 
+        // Откладываем переход в 'recording' до did-finish-load + init-recording.
+        // Это предотвращает ситуацию, когда state='recording', а MediaRecorder
+        // ещё не создан.
         this.recorderWindow.webContents.on('did-finish-load', () => {
+            const tLoad = Date.now();
+            console.log(`[latency] t=${tLoad - (global as any)._recordingT0 || 0}ms  recorderWindow did-finish-load → sending init-recording`);
             this.recorderWindow?.webContents.send('init-recording', {
                 sourceId,
                 cropRect: this.recordingArea,
                 bitrate,
                 fps: 30,
-                audio: recordAudio
+                audio: recordAudio,
+                sessionId: this.currentSessionId
             });
+            // Переходим в 'recording' только после того, как renderer получил
+            // init и начинает настройку. Это безопасно, т.к. реальный MediaRecorder
+            // стартует асинхронно после init-recording.
+            this.state = 'recording';
+            this._notify();
         });
 
         this.recorderWindow.on('closed', () => {
@@ -357,6 +380,7 @@ export class RecordingManager {
         this.startTime = null;
         this.pausedDuration = 0;
         this.pauseStartTime = null;
+        this.currentSessionId = null;
         this._notify();
     }
 
@@ -376,10 +400,14 @@ export class RecordingManager {
     private _emergencyStop(reason: string): void {
         console.error('Emergency stop:', reason);
         this._stopTimer();
+        // Закрываем recorderWindow — раньше не закрывали, MediaRecorder
+        // не получал сигнал stop, окно висело в памяти, chunks утекали.
+        if (this.recorderWindow) { this.recorderWindow.close(); this.recorderWindow = null; }
         if (this.indicatorWindow) { this.indicatorWindow.close(); this.indicatorWindow = null; }
         if (this.boundaryWindow) { this.boundaryWindow.close(); this.boundaryWindow = null; }
         this.state = 'idle';
         this.activeDisplay = null;
+        this.currentSessionId = null;
         this._notify();
         new Notification({ title: 'CloudSnap', body: 'Запись остановлена: ' + reason }).show();
     }
