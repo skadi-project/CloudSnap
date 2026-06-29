@@ -1,6 +1,6 @@
 {
   "name": "Cloud-snap",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Скриншотер и запись экрана для Nextcloud",
   "main": "main.js",
   "scripts": {
