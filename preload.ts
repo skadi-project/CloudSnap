@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     onConnectionStatus: (callback: (data: { status: string; message: string }) => void) =>
         ipcRenderer.on('connection-status', (_event: IpcRendererEvent, data: { status: string; message: string }) => callback(data)),
+    // Запрос текущего статуса подключения. Используется рендерером после
+    // регистрации onConnectionStatus, чтобы синхронизироваться, если первое
+    // событие было потеряно из-за гонки (рендерер ещё не загрузился, а main
+    // уже отправил «checking»). Без этого бэйдж статуса мог до ~60 с оставаться
+    // без стиля (default-класс), пока не сработает heartbeat.
+    getConnectionStatus: () => ipcRenderer.invoke('get-connection-status'),
 
     saveScreenshotMode: (mode: string) => ipcRenderer.send('save-screenshot-mode', mode),
     getScreenshotMode: () => ipcRenderer.invoke('get-screenshot-mode'),

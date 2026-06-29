@@ -1,0 +1,5 @@
+/* Recorder window — invisible container with video + crop canvas.
+   Only the recording state is visible (driven by canvas drawing in JS). */
+
+body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+video, canvas { display: none; }

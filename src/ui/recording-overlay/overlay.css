@@ -1,0 +1,53 @@
+/* Recording overlay indicator — pill at top-right with dot, timer, pause, stop. */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: transparent;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    -webkit-app-region: no-drag;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+}
+#indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(30, 30, 30, 0.92);
+    border-radius: 8px;
+    padding: 8px 14px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    height: 34px;
+    width: fit-content;
+}
+#recDot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #ff3333;
+    animation: pulse 1s ease-in-out infinite;
+    flex-shrink: 0;
+}
+#recDot.paused {
+    background: #ffcc00;
+    animation: none;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+#timer {
+    color: #fff; font-size: 14px; min-width: 50px;
+    font-variant-numeric: tabular-nums;
+}
+#pauseBtn, #stopBtn {
+    border: none; border-radius: 4px; padding: 4px 8px;
+    cursor: pointer; font-size: 12px; color: #fff;
+    display: flex; align-items: center; gap: 4px;
+    transition: background 0.15s;
+}
+.ov-icon { width: 14px; height: 14px; display: inline-block; vertical-align: middle; flex-shrink: 0; }
+#pauseBtn { background: #555; }
+#pauseBtn:hover { background: #777; }
+#stopBtn { background: #c00; }
+#stopBtn:hover { background: #a00; }

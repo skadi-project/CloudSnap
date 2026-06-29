@@ -68,6 +68,7 @@ interface Window {
         onScreenshotModeChanged: (callback: (mode: string) => void) => void;
         onStatusUpdate: (callback: (message: string) => void) => void;
         onConnectionStatus: (callback: (data: { status: string; message: string }) => void) => void;
+        getConnectionStatus: () => Promise<{ status: string; message: string }>;
         onRecordingStateChanged: (callback: (data: RecordingStatePayload) => void) => void;
         onRecordingTimerUpdate: (callback: (seconds: number) => void) => void;
         onHistoryUpdated: (callback: () => void) => void;
@@ -392,30 +393,43 @@ if (window.electronAPI && typeof window.electronAPI.onStatusUpdate === 'function
 let isDisconnected = false;
 const connectionStatus = document.getElementById('connectionStatus') as HTMLElement | null;
 
+/**
+ * Применяет состояние подключения к DOM. Вынесено в отдельную функцию,
+ * чтобы одинаково обрабатывать push-события от main и pull-запрос
+ * `getConnectionStatus` (страховка от потерянного первого события).
+ */
+function applyConnectionStatus(data: { status: string; message: string }): void {
+    if (data.status === 'disconnected') {
+        isDisconnected = true;
+        if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#f44336'; }
+        if (connectionStatus) { connectionStatus.innerText = 'Соединение потеряно'; connectionStatus.classList.remove('connected', 'reconnecting', 'checking'); connectionStatus.classList.add('disconnected'); }
+    } else if (data.status === 'reconnecting') {
+        if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#ff9800'; }
+        if (connectionStatus) { connectionStatus.innerText = data.message; connectionStatus.classList.remove('connected', 'disconnected', 'checking'); connectionStatus.classList.add('reconnecting'); }
+    } else if (data.status === 'connected') {
+        isDisconnected = false;
+        if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#4caf50'; }
+        if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.classList.remove('disconnected', 'reconnecting', 'checking'); connectionStatus.classList.add('connected'); }
+    } else if (data.status === 'checking') {
+        if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#aaa'; }
+        if (connectionStatus) { connectionStatus.innerText = 'Проверка соединения...'; connectionStatus.classList.remove('connected', 'disconnected', 'reconnecting'); connectionStatus.classList.add('checking'); }
+    }
+    if (statusContainer) statusContainer.style.display = 'block';
+}
+
 if (window.electronAPI && window.electronAPI.onConnectionStatus) {
     window.electronAPI.onConnectionStatus((data: { status: string; message: string }) => {
-        if (data.status === 'disconnected') {
-            isDisconnected = true;
-            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#f44336'; }
-            if (connectionStatus) { connectionStatus.innerText = 'Соединение потеряно'; connectionStatus.classList.remove('connected', 'reconnecting', 'checking'); connectionStatus.classList.add('disconnected'); }
-        } else if (data.status === 'reconnecting') {
-            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#ff9800'; }
-            if (connectionStatus) { connectionStatus.innerText = data.message; connectionStatus.classList.remove('connected', 'disconnected', 'checking'); connectionStatus.classList.add('reconnecting'); }
-        } else if (data.status === 'connected') {
-            if (isDisconnected) {
-                isDisconnected = false;
-                if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#4caf50'; }
-                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.classList.remove('disconnected', 'reconnecting', 'checking'); connectionStatus.classList.add('connected'); }
-            } else {
-                if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#4caf50'; }
-                if (connectionStatus) { connectionStatus.innerText = 'Подключено к облаку'; connectionStatus.classList.remove('disconnected', 'reconnecting', 'checking'); connectionStatus.classList.add('connected'); }
-            }
-        } else if (data.status === 'checking') {
-            if (statusLog) { statusLog.innerText = data.message; statusLog.style.color = '#aaa'; }
-            if (connectionStatus) { connectionStatus.innerText = 'Проверка соединения...'; connectionStatus.classList.remove('connected', 'disconnected', 'reconnecting'); connectionStatus.classList.add('checking'); }
-        }
-        if (statusContainer) statusContainer.style.display = 'block';
+        applyConnectionStatus(data);
     });
+
+    // Страховка от потерянного первого события: main мог отправить «checking»
+    // ещё до того, как рендерер зарегистрировал слушатель. Запрашиваем текущее
+    // состояние явно, чтобы бэйдж сразу получил правильный класс/текст.
+    if (typeof window.electronAPI.getConnectionStatus === 'function') {
+        window.electronAPI.getConnectionStatus()
+            .then((state) => { if (state) applyConnectionStatus(state); })
+            .catch(() => { /* non-fatal: следующее событие приведёт состояние в норму */ });
+    }
 }
 
 if (saveSettingsBtn) {

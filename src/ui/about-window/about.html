@@ -2,99 +2,47 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.github.com https://github.com https://t.me; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none';">
     <title>О программе CloudSnap</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #f0f0f0;
-            color: #000;
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            font-size: 9pt;
-            overflow: hidden;
-            position: relative;
-            -webkit-app-region: no-drag;
-        }
-
-        .top-section {
-            display: flex;
-            align-items: flex-start;
-            padding: 16px 20px 0 20px;
-            gap: 18px;
-        }
-
-        .logo-area {
-            width: 64px;
-            height: 64px;
-            flex-shrink: 0;
-        }
-        .logo-area img {
-            width: 64px;
-            height: 64px;
-        }
-
-        .info-area {
-            flex: 1;
-            padding-top: 2px;
-        }
-        .product-name {
-            font-size: 12pt;
-            font-weight: 700;
-            color: #000;
-            margin-bottom: 8px;
-        }
-        .version-line {
-            font-size: 9pt;
-            color: #000;
-            margin-bottom: 4px;
-        }
-        .desc-line {
-            font-size: 9pt;
-            color: #000;
-            margin-top: 8px;
-            line-height: 1.5;
-        }
-
-        .separator {
-            margin: 14px 20px 10px 20px;
-            height: 1px;
-            background: #c0c0c0;
-        }
-
-        .bottom-section {
-            padding: 4px 20px 0 20px;
-        }
-        .copyright-line {
-            font-size: 8pt;
-            color: #444;
-            line-height: 1.6;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
     <div class="top-section">
         <div class="logo-area">
-        <img src="../../../tray-icon.png" alt="CloudSnap" style="width:64px;height:64px;">
+            <img src="../../../tray-icon.png" alt="CloudSnap" style="width:56px;height:56px;">
         </div>
 
         <div class="info-area">
             <div class="product-name">CloudSnap</div>
-            <div class="version-line">Версия 1.0.2</div>
-            <div class="desc-line">
-                Скриншотер и запись экрана с<br>
-                автоматической выгрузкой в Nextcloud
-            </div>
+            <div class="version-line">Версия <span id="current-version">1.0.3</span></div>
+            <div class="desc-line">Скриншотер и запись экрана с автоматической выгрузкой в Nextcloud</div>
         </div>
     </div>
 
     <div class="separator"></div>
 
     <div class="bottom-section">
-        <div class="copyright-line">
-            © 2026 CloudSnap. Все права защищены.<br>
-            Захват экрана • Запись видео • Разметка снимков • Очередь отправки
+        <div class="meta-row">
+            <span class="meta-label">Автор:</span>
+            <span class="meta-value">Skadi Project</span>
+            <a href="https://github.com/skadi-project/CloudSnap" target="_blank" rel="noopener noreferrer" class="meta-icon-link" title="GitHub">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.16c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.74-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.77.11 3.06.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.26 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
+            </a>
+            <a href="https://t.me/uly_lehanef" target="_blank" rel="noopener noreferrer" class="meta-icon-link" title="Telegram">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.13-3.05-1.99 1.93c-.23.23-.42.42-.86.42z"/></svg>
+            </a>
         </div>
+
+        <div class="update-row">
+            <span class="meta-label">Обновления:</span>
+            <span id="update-status" class="update-status checking">проверка…</span>
+            <button type="button" id="update-recheck" class="update-recheck" title="Проверить обновления">↻</button>
+        </div>
+
+        <div class="copyright-line">© 2026 CloudSnap. Все права защищены.</div>
     </div>
 
+    <script src="about.js"></script>
 </body>
 </html>

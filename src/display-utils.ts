@@ -16,6 +16,20 @@ export interface WindowBounds {
     h: number;
     title?: string; // base64-encoded или plain title, используется для матчинга с desktopCapturer
     sourceId?: string | null; // desktopCapturer source id для per-window capture
+    /**
+     * Полные (не клиппированные) координаты окна В СИСТЕМЕ КООРДИНАТ ДИСПЛЕЯ-ЗАХВАТА.
+     * (x, y) — координаты левого-верхнего угла полного окна относительно origin
+     * дисплея-захвата; могут быть отрицательными, если окно частично за ним.
+     * (w, h) — полный размер окна (включая часть вне дисплея).
+     *
+     * Нужны renderer'у, чтобы после getUserMedia(sourceId) получить полное
+     * изображение окна и обрезать его до (x, y, w, h) — иначе в снимок попадает
+     * лишнее пространство за пределами подсвеченной области.
+     */
+    fullX?: number;
+    fullY?: number;
+    fullW?: number;
+    fullH?: number;
 }
 
 /**
@@ -302,7 +316,16 @@ export function filterWindowBoundsForDisplay(
                     h: cb - cy,
                     // Сохраняем sourceId/title — нужны для per-window capture
                     sourceId: win.sourceId,
-                    title: win.title
+                    title: win.title,
+                    // Полные координаты в display-local (для crop getUserMedia).
+                    // Совпадают с системой координат захваченного окна:
+                    // (x, y) — позиция левого-верхнего угла ПОЛНОГО окна
+                    // (может быть отрицательной, если окно частично вне дисплея);
+                    // (w, h) — полный размер.
+                    fullX: win.x - clipX,
+                    fullY: win.y - clipY,
+                    fullW: win.w,
+                    fullH: win.h
                 };
             })
             .filter(win => win.w > 50 && win.h > 50);
@@ -333,7 +356,13 @@ export function filterWindowBoundsForDisplay(
                 w: cr - cx,
                 h: cb - cy,
                 sourceId: win.sourceId,
-                title: win.title
+                title: win.title,
+                // Логические координаты (display-local, до × sf).
+                // Применяем ту же шкалу в финальном .map ниже.
+                fullX: win.x - dx,
+                fullY: win.y - dy,
+                fullW: win.w,
+                fullH: win.h
             };
         })
         .filter(win => win.w > 50 && win.h > 50)
@@ -343,7 +372,14 @@ export function filterWindowBoundsForDisplay(
             w: Math.round(win.w * sf),
             h: Math.round(win.h * sf),
             sourceId: win.sourceId,
-            title: win.title
+            title: win.title,
+            // Та же трансформация × sf, чтобы full* и (x, y, w, h)
+            // оставались в одной системе координат — координаты
+            // захваченного окна (thumbnail-пиксели).
+            fullX: Math.round(win.fullX! * sf),
+            fullY: Math.round(win.fullY! * sf),
+            fullW: Math.round(win.fullW! * sf),
+            fullH: Math.round(win.fullH! * sf)
         }));
 
     if (result.length) {

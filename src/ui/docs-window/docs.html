@@ -2,153 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none';">
     <title>CloudSnap — Документация</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #f8f9fa;
-            color: #333;
-            line-height: 1.6;
-            padding: 0;
-        }
-
-        /* Навигация */
-        .nav {
-            background: #1e1e1e;
-            color: #ccc;
-            padding: 12px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        .nav-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .nav-title svg { width: 22px; height: 22px; }
-        .nav-links { display: flex; gap: 8px; }
-        .nav-links a {
-            color: #aaa; text-decoration: none;
-            font-size: 13px; padding: 4px 10px;
-            border-radius: 4px; transition: all 0.15s;
-        }
-        .nav-links a:hover { background: #333; color: #fff; }
-
-        /* Контент */
-        .content {
-            max-width: 760px;
-            margin: 0 auto;
-            padding: 24px 32px;
-        }
-
-        h1 { font-size: 28px; margin: 0 0 8px; color: #0078d4; }
-        .version { font-size: 13px; color: #888; margin-bottom: 24px; }
-
-        h2 {
-            font-size: 20px; color: #0078d4;
-            margin: 32px 0 12px;
-            padding-bottom: 6px;
-            border-bottom: 2px solid #0078d4;
-        }
-        h3 { font-size: 16px; color: #444; margin: 20px 0 8px; }
-
-        p { margin: 8px 0; }
-        ul, ol { margin: 8px 0 8px 20px; }
-        li { margin: 4px 0; }
-
-        /* Блоки */
-        .info-box {
-            background: #e8f4fd;
-            border: 1px solid #b3d7ee;
-            border-left: 4px solid #0078d4;
-            padding: 12px 16px;
-            border-radius: 4px;
-            margin: 12px 0;
-            font-size: 14px;
-        }
-        .warn-box {
-            background: #fff8e1;
-            border: 1px solid #ffe082;
-            border-left: 4px solid #ff9800;
-            padding: 12px 16px;
-            border-radius: 4px;
-            margin: 12px 0;
-            font-size: 14px;
-        }
-        .mac-box {
-            background: #f3e5f5;
-            border: 1px solid #ce93d8;
-            border-left: 4px solid #9c27b0;
-            padding: 12px 16px;
-            border-radius: 4px;
-            margin: 12px 0;
-            font-size: 14px;
-        }
-
-        /* Клавиши */
-        kbd {
-            background: #eee;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 12px;
-            font-family: 'Segoe UI', monospace;
-            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
-        }
-
-        /* Таблица */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 12px 0;
-        }
-        th, td {
-            padding: 8px 12px;
-            text-align: left;
-            border: 1px solid #ddd;
-            font-size: 14px;
-        }
-        th { background: #0078d4; color: #fff; font-weight: 600; }
-        td { background: #fff; }
-
-        /* Схема */
-        .flow {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin: 12px 0;
-            font-size: 14px;
-            flex-wrap: wrap;
-        }
-        .flow-step {
-            background: #0078d4;
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-        }
-        .flow-arrow { color: #888; font-size: 18px; }
-
-        /* Закрытие */
-        .close-btn {
-            background: #5c5c5c;
-            color: #fff;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .close-btn:hover { background: #444; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -165,17 +21,20 @@
         <a href="#setup">Настройка</a>
         <a href="#screenshots">Скриншоты</a>
         <a href="#recording">Запись</a>
+        <a href="#lifecycle">Lifecycle</a>
         <a href="#hotkeys">Клавиши</a>
         <a href="#upload">Выгрузка</a>
+        <a href="#troubleshoot">Проблемы</a>
         <a href="#macos">macOS</a>
-        <button class="close-btn" onclick="window.close()">✕ Закрыть</button>
+        <a href="#about">О программе</a>
+        <button class="close-btn" id="closeBtn">✕ Закрыть</button>
     </div>
 </div>
 
 <div class="content">
 
 <h1>CloudSnap</h1>
-<div class="version">v1.0.2 — Скриншотер и запись экрана с автоматической выгрузкой в Nextcloud</div>
+<div class="version">v1.0.3 — Скриншотер и запись экрана с автоматической выгрузкой в Nextcloud</div>
 
 <p>CloudSnap — приложение для быстрого захвата экрана и записи видео с последующей автоматической отправкой файлов на сервер Nextcloud через WebDAV. Работает из системного трея, поддерживает горячие клавиши, разметку снимков и очередь отправки при отсутствии сети.</p>
 
@@ -259,7 +118,8 @@
 </ul>
 
 <h3>Индикатор записи</h3>
-<p>В правом верхнем углу экрана появляется панель с таймером, кнопками <strong>Пауза</strong> и <strong>Стоп</strong>. Для записи области — красная рамка вокруг выделенной зоны.</p>
+<p>В правом верхнем углу экрана появляется компактная панель (pill) с таймером и кнопками <strong>Пауза</strong> и <strong>Стоп</strong>. Pill прижата к правому краю с отступом 10px от границы экрана — одинаково сверху и справа. Размер pill подстраивается под содержимое, окно индикатора остаётся прозрачным за её пределами.</p>
+<p>При записи области вокруг выделенной зоны дополнительно появляется <strong>красная рамка</strong> с отступом 20px от границ области. Рамка не перехватывает клики (<code>setIgnoreMouseEvents</code>) и не отбрасывает тень — чтобы не мешать взаимодействию с рабочим столом.</p>
 
 <h3>Управление</h3>
 <table>
@@ -271,6 +131,37 @@
 
 <div class="info-box">
     Формат видео — <code>.webm</code> (VP9/VP8 + Opus). Битрейт и наличие звука настраиваются в параметрах приложения.
+</div>
+
+<!-- ===================== LIFECYCLE ===================== -->
+
+<h2 id="lifecycle">Жизненный цикл записи</h2>
+
+<p>Под капотом запись управляется state machine с пятью состояниями. Понимание этого полезно, если что-то пошло не так и нужно понять, на каком этапе процесс завис.</p>
+
+<table>
+    <tr><th>Состояние</th><th>Когда</th></tr>
+    <tr><td><code>idle</code></td><td>Записи нет. Стартовая точка.</td></tr>
+    <tr><td><code>selecting</code></td><td>Открыто окно выбора области. На экране thumbnail выбранного монитора, рисуем прямоугольник выделения.</td></tr>
+    <tr><td><code>recording</code></td><td>Идёт запись. <code>MediaRecorder</code> в recorder-окне пишет чанки, таймер на индикаторе тикает, dot пульсирует красным.</td></tr>
+    <tr><td><code>paused</code></td><td>Запись приостановлена. Таймер на индикаторе остановлен, dot стал жёлтым, иконка кнопки сменилась на «Play».</td></tr>
+    <tr><td><code>stopping</code></td><td>Recorder финализирует файл: чанки склеиваются, thumbnail генерируется. После этого состояние → <code>idle</code> и файл уходит на выгрузку.</td></tr>
+</table>
+
+<h3>События и переходы</h3>
+<table>
+    <tr><th>Действие</th><th>Переход</th></tr>
+    <tr><td>Старт «Записать весь экран»</td><td><code>idle → recording</code></td></tr>
+    <tr><td>Старт «Записать область»</td><td><code>idle → selecting → recording</code></td></tr>
+    <tr><td>Пауза</td><td><code>recording → paused</code></td></tr>
+    <tr><td>Продолжить</td><td><code>paused → recording</code></td></tr>
+    <tr><td>Стоп</td><td><code>recording | paused → stopping → idle</code></td></tr>
+    <tr><td>Закрытие приложения при активной записи</td><td><code>* → idle</code> через force-stop с уничтожением всех окон</td></tr>
+    <tr><td>Окно рекордера закрыто вручную</td><td><code>recording | paused → idle</code> через emergency-stop с уведомлением</td></tr>
+</table>
+
+<div class="info-box">
+    <strong>Защита от race conditions.</strong> State machine валидирует каждый переход. Невалидный переход (например, повторный Pause после Stop, или Pause до полной загрузки recorder-окна) игнорируется с warning'ом в логе, состояние не меняется. Это страхует от двойных кликов и поздних IPC-сообщений.
 </div>
 
 <!-- ===================== ГОРЯЧИЕ КЛАВИШИ ===================== -->
@@ -319,9 +210,33 @@
 <h3>История</h3>
 <p>Вкладка «История» показывает последние 50 операций. Для каждого файла:</p>
 <ul>
-    <li>Миниатюра (для снимков) или иконка (для видео)</li>
+    <li>Миниатюра для снимков и видео</li>
     <li>Имя файла, время, статус (загружено / в очереди)</li>
-    <li>Кнопки: скопировать ссылку, открыть в Nextcloud, удалить</li>
+    <li>Кнопки: скопировать ссылку, открыть в Nextcloud, удалить (из списка)</li>
+</ul>
+
+<!-- ===================== TROUBLESHOOT ===================== -->
+
+<h2 id="troubleshoot">Устранение проблем</h2>
+
+<h3>Чёрный или пустой скриншот / видео</h3>
+<p>На macOS проверьте разрешение <strong>Запись экрана</strong>: Системные настройки → Конфиденциальность → Запись экрана → добавить CloudSnap. Без разрешения <code>desktopCapturer</code> возвращает пустые thumbnails — и скриншоты, и видео получаются чёрными.</p>
+
+<h3>Не работает режим «Окно» или запись области</h3>
+<p>На macOS требуется разрешение <strong>Универсальный доступ</strong>: Системные настройки → Конфиденциальность → Универсальный доступ → добавить CloudSnap. Без него нельзя определить границы окон для подсветки и не работает выбор области записи.</p>
+
+<h3>Запись «зависла» при закрытии приложения</h3>
+<p>CloudSnap ловит <code>before-quit</code> в состояниях <code>recording</code> / <code>paused</code> / <code>stopping</code>: сначала останавливает запись корректно (через <code>stop()</code>), и только после финализации файла закрывает приложение. Если окно рекордера было закрыто вручную или разрушено — срабатывает <strong>emergency stop</strong> с уведомлением «Запись остановлена: &lt;причина&gt;».</p>
+
+<h3>Конфликт горячих клавиш</h3>
+<p>CloudSnap проверяет уникальность трёх сочетаний при сохранении. Если они пересекаются — приложение не даст сохранить и покажет, какие именно совпали. Решение — выбрать разные клавиши.</p>
+
+<h3>Где смотреть логи</h3>
+<ul>
+    <li><strong>main-процесс</strong> — в консоли DevTools (открывается из терминала при запуске через <code>npm start</code>)</li>
+    <li><strong>recorder-окно</strong> — в DevTools самого recorder-окна (правый клик → Inspect, если DevTools включены)</li>
+    <li><strong>Задержки старта</strong> — строки вида <code>[latency] t=NNNms  ...</code> в main-логе. Используются для диагностики задержек от клика до начала записи.</li>
+    <li><strong>Битрейт</strong> — строка <code>[bitrate] ...</code> при старте записи показывает применённое значение из настроек.</li>
 </ul>
 
 <!-- ===================== macOS ===================== -->
@@ -364,6 +279,8 @@
     <tr><td>Записать область</td><td>Открывает окно выделения области</td></tr>
     <tr><td>Пауза / Продолжить / Остановить</td><td>Управление записью (меняются в процессе)</td></tr>
     <tr><td>Сделать снимок</td><td>Запускает захват экрана</td></tr>
+    <tr><td>Проверить обновления</td><td>Проверяет наличие обновлений</td></tr>
+    <tr><td>О программе CloudSnap </td><td>Запускает информацию о приложении</td></tr>
     <tr><td>Выйти из приложения</td><td>Завершает работу (если запись активна — сначала останавливает)</td></tr>
 </table>
 
@@ -381,12 +298,34 @@
     <tr><td><code>{user}</code></td><td>admin</td></tr>
     <tr><td><code>{monitor}</code></td><td>1</td></tr>
 </table>
-<p>Расширение: <code>.png</code> для снимков, <code>.webm</code> для видео.</p>
+<p>Расширение: <code>.png</code> для снимков, <code>.mp4</code> для видео.</p>
 
 <div class="info-box">
     Кириллические символы и спецзнаки в именах автоматически заменяются на безопасные.
 </div>
 
+<!-- ===================== О ПРОГРАММЕ ===================== -->
+
+<h2 id="about">О программе</h2>
+
+<p>Версия: <strong>1.0.3</strong>. Открыть окно «О программе» — в контекстном меню трея, пункт <strong>«О CloudSnap»</strong>. Там ссылки на проект, список используемых библиотек и лицензия.</p>
+
+<h3>Стек</h3>
+<ul>
+    <li><strong>Electron 28+</strong> — кросс-платформенная обёртка (Windows, macOS)</li>
+    <li><strong>TypeScript 6+</strong> — основной язык проекта</li>
+    <li><strong>electron-store</strong> — локальное хранилище настроек и истории</li>
+    <li><strong>webdav 4</strong> — клиент для выгрузки в Nextcloud (загрузка файлов, OCS Share API)</li>
+    <li><strong>mediabunny</strong> — работа с медиаданными (генерация миниатюр, медиа-инфо)</li>
+</ul>
+
+<h3>Где взять исходники и developer-документацию</h3>
+<ul>
+    <li><strong>README.md</strong> — в корне репозитория. Инструкции по сборке (Docker / локально), Makefile-команды, требования к окружению, ограничения macOS-сборки в Linux.</li>
+    <li><strong>src/recording/README.md</strong> — детальное описание state machine записи (для контрибьюторов: таблица переходов, side-effects, дизайн-решения, примеры тестов).</li>
+</ul>
+
 </div>
+<script src="docs.js"></script>
 </body>
 </html>

@@ -2,79 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none';">
     <title>Выбор монитора</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            margin: 0; padding: 24px;
-            font-family: Arial, sans-serif;
-            background: #1e1e1e; color: #eee;
-            min-height: 100vh;
-        }
-        h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
-        .subtitle { color: #aaa; font-size: 13px; margin-bottom: 20px; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-        }
-        .monitor-card {
-            background: #2d2d2d;
-            border: 2px solid #444;
-            border-radius: 10px;
-            overflow: hidden;
-            cursor: pointer;
-            transition: border-color 0.15s, transform 0.15s;
-        }
-        .monitor-card:hover {
-            border-color: #0078d4;
-            transform: translateY(-2px);
-        }
-        .monitor-card.primary { border-color: #555; }
-        .monitor-card.primary::after {
-            content: 'Основной';
-            position: absolute;
-            top: 8px; right: 8px;
-            background: #0078d4;
-            color: #fff;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        .monitor-card { position: relative; }
-        .thumb-wrap {
-            aspect-ratio: 16 / 10;
-            background: #111;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        .thumb-wrap img {
-            width: 100%; height: 100%;
-            object-fit: cover;
-        }
-        .thumb-placeholder {
-            color: #666; font-size: 40px;
-        }
-        .monitor-info {
-            padding: 10px 12px;
-        }
-        .monitor-name { font-size: 14px; font-weight: bold; }
-        .monitor-size { font-size: 11px; color: #999; margin-top: 4px; }
-        .cancel-row { margin-top: 20px; text-align: center; }
-        .cancel-btn {
-            background: transparent;
-            border: 1px solid #666;
-            color: #ccc;
-            padding: 8px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .cancel-btn:hover { background: #333; color: #fff; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <h2>Выберите монитор</h2>
@@ -83,47 +13,6 @@
     <div class="cancel-row">
         <button class="cancel-btn" id="cancelBtn">Отмена</button>
     </div>
-    <script>
-        const grid = document.getElementById('grid');
-        const subtitle = document.getElementById('subtitle');
-        const cancelBtn = document.getElementById('cancelBtn');
-
-        const MODE_LABELS = {
-            capture: 'снимка экрана',
-            'record-fullscreen': 'записи всего экрана',
-            'record-area': 'записи области'
-        };
-
-        window.electronAPI.onDisplaysList((data) => {
-            subtitle.textContent = `Кликните на экран для ${MODE_LABELS[data.mode] || 'захвата'}`;
-            grid.innerHTML = '';
-
-            for (const d of data.displays) {
-                const card = document.createElement('div');
-                card.className = 'monitor-card' + (d.isPrimary ? ' primary' : '');
-                card.innerHTML = `
-                    <div class="thumb-wrap">
-                        ${d.thumbnail
-                            ? `<img src="${d.thumbnail}" alt="">`
-                            : '<div class="thumb-placeholder">🖥</div>'}
-                    </div>
-                    <div class="monitor-info">
-                        <div class="monitor-name">${d.label}</div>
-                        <div class="monitor-size">${Math.round(d.bounds.width * (d.scaleFactor || 1))} × ${Math.round(d.bounds.height * (d.scaleFactor || 1))}</div>
-                    </div>
-                `;
-                card.addEventListener('click', () => {
-                    window.electronAPI.selectMonitor(d.id);
-                });
-                grid.appendChild(card);
-            }
-        });
-
-        cancelBtn.addEventListener('click', () => window.electronAPI.cancelMonitorPicker());
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') window.electronAPI.cancelMonitorPicker();
-        });
-    </script>
+    <script src="picker.js"></script>
 </body>
 </html>

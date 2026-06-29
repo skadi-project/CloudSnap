@@ -1,0 +1,34 @@
+/* Recording boundary frame — draws a red rectangle around the captured area.
+   Loaded as external stylesheet; no scripts needed. */
+
+* { margin: 0; padding: 0; }
+body {
+    background: transparent;
+    overflow: hidden;
+}
+
+.frame-border {
+    position: fixed;
+    background: rgba(255, 50, 50, 0.8);
+    pointer-events: none;
+}
+.frame-top {
+    left: 2px; right: 2px;
+    top: 2px;
+    height: 3px;
+}
+.frame-bottom {
+    left: 2px; right: 2px;
+    bottom: 2px;
+    height: 3px;
+}
+.frame-left {
+    top: 2px; bottom: 2px;
+    left: 2px;
+    width: 3px;
+}
+.frame-right {
+    top: 2px; bottom: 2px;
+    right: 2px;
+    width: 3px;
+}

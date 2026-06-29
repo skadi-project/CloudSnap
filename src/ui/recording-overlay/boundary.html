@@ -2,38 +2,8 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <style>
-        * { margin: 0; padding: 0; }
-        body {
-            background: transparent;
-            overflow: hidden;
-        }
-        .frame-border {
-            position: fixed;
-            background: rgba(255, 50, 50, 0.8);
-            pointer-events: none;
-        }
-        .frame-top {
-            left: 2px; right: 2px;
-            top: 2px;
-            height: 3px;
-        }
-        .frame-bottom {
-            left: 2px; right: 2px;
-            bottom: 2px;
-            height: 3px;
-        }
-        .frame-left {
-            top: 2px; bottom: 2px;
-            left: 2px;
-            width: 3px;
-        }
-        .frame-right {
-            top: 2px; bottom: 2px;
-            right: 2px;
-            width: 3px;
-        }
-    </style>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; img-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none';">
+    <link rel="stylesheet" href="boundary.css">
 </head>
 <body>
     <div class="frame-border frame-top"></div>

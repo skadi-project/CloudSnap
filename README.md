@@ -168,8 +168,8 @@ make build-mac      # только macOS .zip
 
 | Файл                        | Описание                                     |
 | --------------------------- | -------------------------------------------- |
-| `CloudSnap Setup 1.0.2.exe` | NSIS-инсталлер для Windows                   |
-| `CloudSnap-1.0.2-mac.zip`   | Unsigned .app bundle для macOS (development) |
+| `CloudSnap Setup 1.0.3.exe` | NSIS-инсталлер для Windows                   |
+| `CloudSnap-1.0.3-mac.zip`   | Unsigned .app bundle для macOS (development) |
 
 > **macOS .zip — не production-билд.** Для signed .dmg нужна macOS-машина (см. ниже).
 
@@ -185,7 +185,7 @@ npm install --save-dev @types/node@latest electron-builder@latest && npm run bui
 make build-local-win
 ```
 
-Результат: `dist/CloudSnap Setup 1.0.2.exe`
+Результат: `dist/CloudSnap Setup 1.0.3.exe`
 
 ### macOS — signed .dmg на Mac-машине
 
@@ -201,7 +201,7 @@ make build-local-mac
 > - `entitlements.mac.plist` в корне проекта (уже есть)
 > - Для code signing: Apple Developer ID + сертификат (опционально)
 
-Результат: `dist/CloudSnap-1.0.2.dmg`
+Результат: `dist/CloudSnap-1.0.3.dmg`
 
 ---
 
