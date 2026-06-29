@@ -7,7 +7,7 @@
  * избежать дублирования логики.
  */
 
-import { app, BrowserWindow, Menu, Notification, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Notification, shell } from 'electron';
 import * as path from 'path';
 import Store from 'electron-store';
 import { checkForUpdates } from './update-checker';
@@ -57,19 +57,34 @@ export async function runUpdateCheck(): Promise<void> {
 
 /**
  * Переиспользуемый обработчик «О программе»:
- * открывает модальное окно «О программе» с привязкой к главному окну
- * (если оно есть). Если такое окно уже открыто — фокусирует его,
- * а не плодит дубликаты.
+ * открывает независимое окно «О программе» — НЕ модальное и без
+ * привязки к parent, чтобы оно вело себя как обычное окно ОС со
+ * своим набором стандартных кнопок управления (закрыть/свернуть/
+ * развернуть на Windows, traffic lights на macOS) и не блокировало
+ * взаимодействие с главным окном. Если такое окно уже открыто —
+ * фокусирует его, а не плодит дубликаты.
  */
-export function openAboutWindow(): void {
-    const win = mainWindowGetter();
+let aboutWindowRef: BrowserWindow | null = null;
 
-    const existing = BrowserWindow.getAllWindows().find(
-        (w) => !w.isDestroyed() && w.getTitle() === 'О программе CloudSnap'
-    );
-    if (existing) {
-        existing.show();
-        existing.focus();
+let ipcAboutCloseRegistered = false;
+
+export function openAboutWindow(): void {
+    if (!ipcAboutCloseRegistered) {
+        ipcMain.on('about-window:close', (event) => {
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            senderWindow?.close();
+        });
+        ipcAboutCloseRegistered = true;
+    }
+
+    // Используем явную ссылку на окно вместо поиска по заголовку:
+    // после loadFile() заголовок может быть переопределён содержимым
+    // about.html, и поиск по getTitle() перестаёт находить окно —
+    // из-за этого на повторных вызовах мог создаваться ещё один
+    // инстанс окна вместо фокусировки уже открытого.
+    if (aboutWindowRef && !aboutWindowRef.isDestroyed()) {
+        aboutWindowRef.show();
+        aboutWindowRef.focus();
         return;
     }
 
@@ -77,15 +92,28 @@ export function openAboutWindow(): void {
         width: 440,
         height: 230,
         resizable: false,
-        minimizable: false,
+        // minimizable оставлен включённым (по умолчанию true), чтобы
+        // окно вело себя как полноценное независимое окно со всеми
+        // стандартными кнопками управления, включая «свернуть».
         maximizable: false,
+        closable: true,
         title: 'О программе CloudSnap',
-        parent: win || undefined,
-        modal: !!win,
+        // Без parent и modal — окно полностью независимо: не блокирует
+        // главное окно, не превращается в sheet на macOS и получает
+        // обычный titlebar с полным набором traffic-light кнопок.
+        titleBarStyle: 'default',
         icon: path.join(__dirname, '..', '..', '..', 'icon.ico'),
         webPreferences: {
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            preload: path.join(__dirname, '..', '..', 'ui', 'about-window', 'about-preload.js')
+        }
+    });
+
+    aboutWindowRef = aboutWindow;
+    aboutWindow.on('closed', () => {
+        if (aboutWindowRef === aboutWindow) {
+            aboutWindowRef = null;
         }
     });
     // Открывать внешние ссылки (GitHub/Telegram) в системном браузере,
@@ -183,7 +211,7 @@ export function buildAppMenu(): void {
                 },
                 {
                     label: 'Сообщить об ошибке',
-                    click: () => new Notification({ title: 'CloudSnap', body: 'Обновления не найдены' }).show()
+                    click: () => { void shell.openExternal('https://github.com/skadi-project/CloudSnap/issues'); }
                 },
                 {
                     label: 'Проверить обновления',
