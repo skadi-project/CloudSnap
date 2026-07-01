@@ -125,7 +125,7 @@ npm run watch
 docker compose build cloudsnap
 ```
 
-> **Важно:** Образ весит ~1.5 GB (wine + Node.js + Electron). Сборка занимает 5–10 минут.
+> **Важно:** Образ весит ~6.49 GB (wine + Node.js + Electron). Сборка занимает 5–10 минут.
 
 ### Сборка обеих платформ
 
